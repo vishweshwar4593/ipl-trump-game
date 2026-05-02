@@ -1,7 +1,6 @@
 import { io } from "socket.io-client";
 
-const SOCKET_URL = "https://pearlie-unpredicted-jejunely.ngrok-free.dev";
-
+const SOCKET_URL = "https://ipl-trump-game.onrender.com";
 console.log("Connecting to:", SOCKET_URL); // ✅ debug
 
 const socket = io(SOCKET_URL, {
