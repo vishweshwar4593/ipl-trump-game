@@ -109,25 +109,25 @@ function OnlineMode({
 
     // ── Actions ─────────────────────────────────────────────────────────────
     const handleCreateRoom = () => {
-        // Check if socket is connected
         if (!socket.connected) {
             alert("Cannot connect to server. Please make sure the server is running!");
             return;
         }
 
-        // Show loading feedback
         setIsCreatingRoom(true);
 
-        // Set a timeout to show error if no response
-        const timeout = setTimeout(() => {
+        // clear old timeout if any
+        if (createRoomTimeoutRef.current) {
+            clearTimeout(createRoomTimeoutRef.current);
+        }
+
+        createRoomTimeoutRef.current = setTimeout(() => {
             setIsCreatingRoom(false);
             if (!isRoomCreated) {
-                alert("Room creation timed out. Please try again or check if server is running.");
+                alert("Room creation timed out. Please try again.");
             }
         }, 5000);
 
-        // Store timeout in ref to clear it later
-        createRoomTimeoutRef.current = timeout;
         socket.emit("createRoom", { gameMode });
     };
 
