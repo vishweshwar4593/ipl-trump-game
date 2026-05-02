@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import socket from "../socket";
 
 function OnlineMode({
@@ -15,13 +15,13 @@ function OnlineMode({
 }) {
     const isTeamMode = gameMode === "team";
 
-// Shared state
+    // Shared state
     const [roomId, setRoomId] = useState("");
     const [isRoomCreated, setIsRoomCreated] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
     const [socketError, setSocketError] = useState(null); // ✅ FIX: surface connection errors
     const [isCreatingRoom, setIsCreatingRoom] = useState(false); // Loading state for room creation
-
+    const createRoomTimeoutRef = useRef(null);
     // ✅ FIX: Listen for socket connection errors dispatched by socket.js
     useEffect(() => {
         const onSocketError = (e) => setSocketError(e.detail || "Could not connect to server");
@@ -50,7 +50,7 @@ function OnlineMode({
     const [joinerTeamPicked, setJoinerTeamPicked] = useState(null);
     const [joinerTeamConfirmed, setJoinerTeamConfirmed] = useState(false);
 
-// ── Socket listeners ────────────────────────────────────────────────────
+    // ── Socket listeners ────────────────────────────────────────────────────
     useEffect(() => {
         // Create handlers as named functions so we can properly remove them
         const handleRoomCreated = (id) => {
@@ -107,17 +107,17 @@ function OnlineMode({
         };
     }, [setPlayerDeck, setAiDeck, setIsOnlineGameStarted, setGameMode, setOnlineRole, setPlayerTeam, setAiTeam]);
 
-// ── Actions ─────────────────────────────────────────────────────────────
+    // ── Actions ─────────────────────────────────────────────────────────────
     const handleCreateRoom = () => {
         // Check if socket is connected
         if (!socket.connected) {
             alert("Cannot connect to server. Please make sure the server is running!");
             return;
         }
-        
+
         // Show loading feedback
         setIsCreatingRoom(true);
-        
+
         // Set a timeout to show error if no response
         const timeout = setTimeout(() => {
             setIsCreatingRoom(false);
@@ -125,16 +125,17 @@ function OnlineMode({
                 alert("Room creation timed out. Please try again or check if server is running.");
             }
         }, 5000);
-        
+
         // Store timeout in ref to clear it later
-        handleCreateRoom.timeout = timeout;
+        createRoomTimeoutRef.current = timeout;
         socket.emit("createRoom", { gameMode });
     };
-    
+
     // Clear timeout when room is created
     useEffect(() => {
-        if (isRoomCreated && handleCreateRoom.timeout) {
-            clearTimeout(handleCreateRoom.timeout);
+        if (isRoomCreated && createRoomTimeoutRef.current) {
+            clearTimeout(createRoomTimeoutRef.current);
+            createRoomTimeoutRef.current = null;
             setIsCreatingRoom(false);
         }
     }, [isRoomCreated]);
@@ -347,33 +348,33 @@ function OnlineMode({
         );
     }
 
-// ── Default: Create / Join screen ────────────────────────────────────────
+    // ── Default: Create / Join screen ────────────────────────────────────────
     return (
         <div className="home">
             <div className="home-container">
                 <h1 style={{ textTransform: "capitalize" }}>🌐 {gameMode || "Online"} Mode</h1>
-                
+
                 {/* Show socket error if any */}
                 {socketError && (
-                    <div style={{ 
-                        background: "rgba(255, 60, 60, 0.2)", 
+                    <div style={{
+                        background: "rgba(255, 60, 60, 0.2)",
                         border: "1px solid #ff3c3c",
-                        borderRadius: "12px", 
-                        padding: "15px", 
+                        borderRadius: "12px",
+                        padding: "15px",
                         marginBottom: "20px",
                         color: "#ff6b6b"
                     }}>
                         ⚠️ {socketError}
-                        <br/>
+                        <br />
                         <small style={{ color: "#aaa" }}>Make sure the server is running on port 5000</small>
                     </div>
                 )}
 
-<button 
-                    className="home-btn" 
+                <button
+                    className="home-btn"
                     onClick={handleCreateRoom}
                     disabled={isCreatingRoom}
-                    style={{ 
+                    style={{
                         opacity: isCreatingRoom ? 0.7 : 1,
                         minWidth: "200px",
                         cursor: isCreatingRoom ? "wait" : "pointer"
@@ -385,7 +386,7 @@ function OnlineMode({
                         "Create Room"
                     )}
                 </button>
-                
+
                 <input
                     type="text"
                     placeholder="Enter Room Code"
