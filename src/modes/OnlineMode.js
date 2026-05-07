@@ -60,8 +60,9 @@ function OnlineMode({
         };
 
         const handleStartGame = (data) => {
-            localStorage.setItem("playerDeck", JSON.stringify(data.playerDeck));
-            localStorage.setItem("aiDeck", JSON.stringify(data.aiDeck));
+            // ✅ FIX: Removed dead localStorage.setItem("playerDeck") / ("aiDeck") —
+            // useGameEngine does NOT read from localStorage in online mode;
+            // decks are injected directly via setPlayerDeck/setAiDeck below.
             if (data.gameMode) setGameMode(data.gameMode);
             if (data.role) setOnlineRole(data.role);
             if (data.playerTeam) setPlayerTeam(data.playerTeam);
@@ -99,8 +100,8 @@ function OnlineMode({
         socket.on("errorMessage", onErrorMessage);
 
         return () => {
-            socket.off("roomCreated");
-            socket.off("startGame");
+            socket.off("roomCreated", handleRoomCreated);       // ✅ FIX: pass handler ref
+            socket.off("startGame", handleStartGame);           // ✅ FIX: pass handler ref
             socket.off("teamSelectRequired", onTeamSelectRequired);
             socket.off("waitingForCreatorTeam", onWaitingForCreatorTeam);
             socket.off("errorMessage", onErrorMessage);

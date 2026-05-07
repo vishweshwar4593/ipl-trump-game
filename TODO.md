@@ -7,8 +7,8 @@
 ### 3. ✅ Read Card.js & ResultScreen.js (stat clicks correct for P1/P2/online)
 ### 4. ✅ Install client deps
 ### 5. ✅ Install server deps
-### 6. ✅ Server running port 5000 (port killed/fixed)
-### 7. 🔄 Client starting (port 3000 conflict → use 3001, type 'Y')
+### 6. ✅ Server running port 5000
+### 7. ✅ Client starting on port 3001 (type 'Y' in frontend terminal for port 3000 conflict)
 
 ### Pending:
 ### 8. Test Classic mode

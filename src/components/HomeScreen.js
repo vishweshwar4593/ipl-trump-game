@@ -6,14 +6,17 @@ function HomeScreen({
     setRulesMode,
     modeRules,
     setSelectedTime,
-    setTimeLeft,
     setGameOver,
     isMuted,
     toggleMute,
     onResumeGame,
-    setPlayStyle
+    setPlayStyle,
+    user,
+    isGuest,
+    onSignOut
 }) {
     const [selectedBaseMode, setSelectedBaseMode] = useState(null);
+    const [showProfile, setShowProfile] = useState(false);
 
     const handleSelectPlayStyle = (style) => {
         setPlayStyle(style);
@@ -31,14 +34,66 @@ function HomeScreen({
         }
     }
 
-    return (
+    // Derive display name
+    const displayName = user?.displayName || (isGuest ? "Guest" : "Player");
+    const avatarLetter = displayName.charAt(0).toUpperCase();
 
+    return (
         <div className="home">
 
-            <button className="home-btn" onClick={toggleMute} style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 100, width: 'auto', padding: '10px', fontSize: '20px' }}>
+            {/* 🔊 Mute Button - top right */}
+            <button
+                className="home-btn"
+                onClick={toggleMute}
+                style={{ position: 'absolute', top: '14px', right: '14px', zIndex: 100, width: 'auto', padding: '10px 14px', fontSize: '20px' }}
+            >
                 {isMuted ? "🔇" : "🔊"}
             </button>
 
+            {/* 👤 Profile Widget - top left */}
+            <div className="profile-widget">
+                <button
+                    className="profile-trigger"
+                    onClick={() => setShowProfile(prev => !prev)}
+                    aria-label="Profile menu"
+                >
+                    <div className="profile-avatar">{avatarLetter}</div>
+                    <span className="profile-name">{displayName}</span>
+                    <span className="profile-chevron">{showProfile ? "▲" : "▼"}</span>
+                </button>
+
+                {showProfile && (
+                    <div className="profile-dropdown">
+                        <div className="profile-dropdown-header">
+                            <div className="profile-avatar-lg">{avatarLetter}</div>
+                            <div>
+                                <p className="profile-dropdown-name">{displayName}</p>
+                                <p className="profile-dropdown-role">
+                                    {isGuest ? "🎮 Guest Player" : "✅ Signed In"}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="profile-dropdown-divider" />
+                        {!isGuest && user ? (
+                            <button
+                                className="profile-signout-btn"
+                                onClick={() => { setShowProfile(false); onSignOut(); }}
+                            >
+                                🚪 Sign Out
+                            </button>
+                        ) : (
+                            <button
+                                className="profile-signin-btn"
+                                onClick={() => { setShowProfile(false); onSignOut(); }}
+                            >
+                                🔐 Go to Login
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Rules Modal */}
             {rulesMode && (
                 <div className="modal-overlay">
                     <div className="modal rules-modal">
@@ -64,6 +119,7 @@ function HomeScreen({
                 </div>
             )}
 
+            {/* Play Style Modal */}
             {selectedBaseMode && (
                 <div className="modal-overlay">
                     <div className="modal" style={{ textAlign: 'center' }}>
@@ -81,10 +137,10 @@ function HomeScreen({
 
             <div className="home-main">
                 <h1 className="home-title">🏏 IPL TRUMP CARDS</h1>
-                
+
                 {savedState && (
-                    <button 
-                        className="home-btn" 
+                    <button
+                        className="home-btn"
                         onClick={() => onResumeGame(savedState)}
                         style={{ margin: '0 auto 30px auto', display: 'block', backgroundColor: '#FFD700', color: '#111', fontWeight: 'bold' }}
                     >
@@ -102,12 +158,8 @@ function HomeScreen({
                         <span className="mode-tag">Standard Trump Match</span>
                         <p>Play the traditional trump card game.</p>
                         <div className="mode-actions">
-                            <button className="play-btn" onClick={() => setSelectedBaseMode("classic")}>
-                                Play
-                            </button>
-                            <button className="rules-btn" onClick={() => setRulesMode("classic")}>
-                                Rules
-                            </button>
+                            <button className="play-btn" onClick={() => setSelectedBaseMode("classic")}>Play</button>
+                            <button className="rules-btn" onClick={() => setRulesMode("classic")}>Rules</button>
                         </div>
                     </div>
 
@@ -121,16 +173,12 @@ function HomeScreen({
                                 className="play-btn"
                                 onClick={() => {
                                     setSelectedBaseMode("time");
-                                    setSelectedTime(null);
-                                    setTimeLeft(120);
                                     setGameOver(false);
                                 }}
                             >
                                 Play
                             </button>
-                            <button className="rules-btn" onClick={() => setRulesMode("time")}>
-                                Rules
-                            </button>
+                            <button className="rules-btn" onClick={() => setRulesMode("time")}>Rules</button>
                         </div>
                     </div>
 
@@ -140,12 +188,8 @@ function HomeScreen({
                         <span className="mode-tag">HP Damage Duel</span>
                         <p>Use stat wins to damage AI HP.</p>
                         <div className="mode-actions">
-                            <button className="play-btn" onClick={() => setSelectedBaseMode("battle")}>
-                                Play
-                            </button>
-                            <button className="rules-btn" onClick={() => setRulesMode("battle")}>
-                                Rules
-                            </button>
+                            <button className="play-btn" onClick={() => setSelectedBaseMode("battle")}>Play</button>
+                            <button className="rules-btn" onClick={() => setRulesMode("battle")}>Rules</button>
                         </div>
                     </div>
 
@@ -155,12 +199,8 @@ function HomeScreen({
                         <span className="mode-tag">Franchise vs Franchise</span>
                         <p>Select teams and battle team vs team.</p>
                         <div className="mode-actions">
-                            <button className="play-btn" onClick={() => setSelectedBaseMode("team")}>
-                                Play
-                            </button>
-                            <button className="rules-btn" onClick={() => setRulesMode("team")}>
-                                Rules
-                            </button>
+                            <button className="play-btn" onClick={() => setSelectedBaseMode("team")}>Play</button>
+                            <button className="rules-btn" onClick={() => setRulesMode("team")}>Rules</button>
                         </div>
                     </div>
 
@@ -168,51 +208,6 @@ function HomeScreen({
             </div>
         </div>
     );
-
-
 }
 
 export default HomeScreen;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

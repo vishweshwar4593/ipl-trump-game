@@ -10,9 +10,11 @@ import ResultScreen from "./components/ResultScreen";
 import GameHeader from "./components/GameHeader";
 import GameBoard from "./components/GameBoard";
 import OnlineMode from "./modes/OnlineMode";
+import LoginScreen from "./components/LoginScreen";
 import socket from "./socket";
 import { useGameAudio } from "./hooks/useGameAudio";
 import { useGameEngine } from "./hooks/useGameEngine";
+import { useAuth } from "./context/AuthContext";
 
 
 export const STAT_WEIGHTS = {
@@ -32,6 +34,22 @@ export const STAT_WEIGHTS = {
 
 function App() {
   const { isMuted, toggleMute, playClick, playWin, playLose, playHit } = useGameAudio();
+  const { user, logout } = useAuth();
+  const [isGuest, setIsGuest] = useState(false);
+
+  const handleSignOut = async () => {
+    await logout();
+    setIsGuest(false);
+    setGameMode(null);
+    setPlayStyle(null);
+    setGameOver(false);
+    setIsOnlineGameStarted(false);
+    setPlayerTeam(null);
+    setAiTeam(null);
+    setResumedGameState(null);
+    setOnlineRole(null);
+    localStorage.removeItem("savedGameState");
+  };
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -166,6 +184,16 @@ function App() {
     setOnlineRole(null);
   };
 
+  // Show login screen if not signed in and not playing as guest
+  // user===undefined means auth is still loading; null means not signed in
+  if (user === undefined) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0a1a', color: '#fff', fontSize: 24 }}>⏳ Loading...</div>;
+  }
+
+  if (!user && !isGuest) {
+    return <LoginScreen onContinueAsGuest={() => setIsGuest(true)} />;
+  }
+
   if (!gameMode || !playStyle) {
     return (
       <HomeScreen
@@ -178,11 +206,13 @@ function App() {
         setRulesMode={setRulesMode}
         modeRules={modeRules}
         setSelectedTime={setSelectedTime}
-        setTimeLeft={setTimeLeft}
         setGameOver={setGameOver}
         isMuted={isMuted}
         toggleMute={toggleMute}
         onResumeGame={onResumeGame}
+        user={user}
+        isGuest={isGuest}
+        onSignOut={handleSignOut}
       />
     );
   }
@@ -310,6 +340,7 @@ function App() {
           onlineRole={onlineRole}
           isMuted={isMuted}
           toggleMute={toggleMute}
+          user={user}
         />
 
         {player && ai ? (

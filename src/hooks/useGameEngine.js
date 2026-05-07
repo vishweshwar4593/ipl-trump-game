@@ -75,10 +75,10 @@ MAX_HP = 500,
     }
 
     if (playStyle === "online") {
-      // ✅ FIX 1: For online mode, decks are injected by OnlineMode via setPlayerDeck/setAiDeck props
-      // when the "startGame" socket event fires. We do NOT read from localStorage here to avoid
-      // overwriting the already-correct state with potentially stale data.
-      // Only the turn/toss needs to be initialised here.
+      // Decks are injected by OnlineMode via setPlayerDeck/setAiDeck when the
+      // "startGame" socket event fires. Toss is deferred to a separate effect
+      // below so it only runs AFTER decks exist (prevents handleStatClick from
+      // firing against undefined player/ai on the very first turn).
     } else if (gameMode === "team") {
       const playerPlayers = players.filter(p => p.team === playerTeam);
       const aiPlayers = players.filter(p => p.team === aiTeam);
@@ -91,19 +91,29 @@ MAX_HP = 500,
       setAiDeck(shuffled.slice(half));
     }
 
-    let tossWinner;
-    if (playStyle === "online") {
-      tossWinner = onlineRole === "creator" ? "player" : "ai";
-    } else {
-      tossWinner = Math.random() > 0.5 ? "player" : "ai";
+    // Offline-only toss — online toss is handled after decks arrive (see effect below).
+    if (playStyle !== "online") {
+      const tossWinner = Math.random() > 0.5 ? "player" : "ai";
+      setTurn(tossWinner);
     }
-
-    setTurn(tossWinner);
     setRound(1);
     setSelectedStat(null);
     setWinner(null);
     setDrawPile([]);
-  }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle, onlineRole]);
+  // onlineRole intentionally removed — no longer used in this effect.
+  }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle]);
+
+  // ✅ FIX: Deferred online toss — only runs once both decks have been injected
+  // by OnlineMode's "startGame" handler. Previously setTurn fired before
+  // setPlayerDeck/setAiDeck, causing handleStatClick to run against undefined
+  // player/ai on the first turn and potentially crashing or silently no-op'ing.
+  useEffect(() => {
+    if (playStyle !== "online") return;
+    if (!playerDeck.length || !aiDeck.length) return; // decks not yet injected
+    if (turn !== null) return;                        // toss already set — don't override mid-game
+    const tossWinner = onlineRole === "creator" ? "player" : "ai";
+    setTurn(tossWinner);
+  }, [playStyle, playerDeck, aiDeck, turn, onlineRole]);
 
   // ✅ FIX 5: Auto-Save Logic — debounced 400ms to avoid blocking main thread during animations.
   // Also saves playStyle so resume correctly restores local/multiplayer games.
