@@ -5,7 +5,9 @@ import {
     onAuthStateChanged,
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
-    updateProfile
+    updateProfile,
+    setPersistence,
+    browserSessionPersistence
 } from "firebase/auth";
 
 const AuthContext = createContext(null);
@@ -17,10 +19,17 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(undefined); // undefined = loading, null = not signed in
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-            setUser(firebaseUser ?? null);
-        });
-        return () => unsubscribe();
+        // Force the session to expire when the browser/tab is closed
+        setPersistence(auth, browserSessionPersistence)
+            .then(() => {
+                const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+                    setUser(firebaseUser ?? null);
+                });
+                return () => unsubscribe();
+            })
+            .catch((error) => {
+                console.error("Auth persistence error:", error);
+            });
     }, []);
 
     // Sign Up — creates new account, saves displayName as the username
