@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import socket from "../socket";
 import "../index.css"; // Ensure styles are available
 
-const EMOTES = ["😎", "🏏", "😭", "🔥", "🤦‍♂️", "👏", "😱", "🏆", "🤐", "🤔"];
+const EMOTES = ["😎", "🏏", "😭", "😢", "🔥", "🤦‍♂️", "👏", "😱", "🏆", "🤔"];
 const QUICK_TEXTS = [
     "Good play!", 
     "Oops!", 
@@ -17,6 +17,7 @@ const QUICK_TEXTS = [
 function EmotePanel({ roomId, playStyle }) {
     const [activeEmote, setActiveEmote] = useState(null);
     const [isOpen, setIsOpen] = useState(false);
+    const timeoutRef = useRef(null);
 
     useEffect(() => {
         if (playStyle !== "online") return;
@@ -25,8 +26,9 @@ function EmotePanel({ roomId, playStyle }) {
             console.log("Emote received from server:", emote);
             setActiveEmote({ text: emote, isSelf: false });
             
-            // Clear the emote after 3 seconds
-            setTimeout(() => {
+            // Clear any existing timeout before setting a new one
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            timeoutRef.current = setTimeout(() => {
                 setActiveEmote(null);
             }, 3000);
         };
@@ -35,6 +37,7 @@ function EmotePanel({ roomId, playStyle }) {
 
         return () => {
             socket.off("receiveEmote", handleReceiveEmote);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
     }, [playStyle]);
 
@@ -48,8 +51,18 @@ function EmotePanel({ roomId, playStyle }) {
             return;
         }
 
-        // Send to server (will only display on opponent's screen)
+        // Send to server (will display on opponent's screen)
         socket.emit("sendEmote", { roomId: currentRoomId, emote });
+        
+        // Show on self screen
+        setActiveEmote({ text: emote, isSelf: true });
+
+        // Clear any existing timeout before setting a new one
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+            setActiveEmote(null);
+        }, 3000);
+
         setIsOpen(false);
     };
 

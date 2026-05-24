@@ -37,6 +37,7 @@ function App() {
   const { isMuted, toggleMute, playClick, playWin, playLose, playHit } = useGameAudio();
   const { user, logout } = useAuth();
   const [isGuest, setIsGuest] = useState(false);
+  const [loginConflict, setLoginConflict] = useState(false);
 
   const handleSignOut = async () => {
     await logout();
@@ -55,6 +56,34 @@ function App() {
 
 
 
+
+  useEffect(() => {
+    if (user && user.displayName) {
+      const register = () => {
+        socket.emit("registerUser", user.displayName);
+      };
+
+      // Register immediately if already connected
+      if (socket.connected) {
+        register();
+      }
+
+      // Re-register every time the socket connects/reconnects
+      socket.on("connect", register);
+
+      const handleLoginConflict = () => {
+        setLoginConflict(true);
+        logout();
+      };
+
+      socket.on("loginConflict", handleLoginConflict);
+
+      return () => {
+        socket.off("connect", register);
+        socket.off("loginConflict", handleLoginConflict);
+      };
+    }
+  }, [user, logout]);
 
   const [gameMode, setGameMode] = useState(null);
   const [playStyle, setPlayStyle] = useState(null);
@@ -192,7 +221,29 @@ function App() {
   }
 
   if (!user && !isGuest) {
-    return <LoginScreen onContinueAsGuest={() => setIsGuest(true)} />;
+    return (
+      <>
+        {loginConflict && (
+          <div className="modal-overlay">
+            <div className="modal" style={{ textAlign: "center", maxWidth: 360 }}>
+              <div style={{ fontSize: 52, marginBottom: 12 }}>🚨</div>
+              <h2 style={{ color: "#ff4b2b", margin: "0 0 8px" }}>Multiple Logins</h2>
+              <p style={{ color: "#ccc", marginBottom: 24 }}>
+                This account is already logged in on another device.
+              </p>
+              <button
+                className="home-btn"
+                style={{ width: "100%", background: "linear-gradient(135deg, #ff4b2b, #ff416c)", border: "none", color: "#fff", padding: "12px", borderRadius: "8px", fontWeight: "bold" }}
+                onClick={() => setLoginConflict(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        )}
+        <LoginScreen onContinueAsGuest={() => setIsGuest(true)} />
+      </>
+    );
   }
 
   if (!gameMode || !playStyle) {
@@ -291,8 +342,10 @@ function App() {
           <div className="modal">
             <h2>Are you sure?</h2>
             <p>Your current game will be lost.</p>
-            <button onClick={confirmGoHome}>Yes</button>
-            <button onClick={cancelGoHome}>Cancel</button>
+            <div className="modal-actions" style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
+              <button className="confirm-btn" onClick={confirmGoHome}>Yes</button>
+              <button className="cancel-btn" onClick={cancelGoHome}>Cancel</button>
+            </div>
           </div>
         </div>
       )}

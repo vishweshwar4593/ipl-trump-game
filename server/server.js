@@ -27,12 +27,11 @@ const VALID_STATS = [
     "bowlingAvg", "bowlingSR", "catches"
 ];
 
-let rooms = {};     // roomId → [socketId1, socketId2]
-let roomModes = {}; // roomId → gameMode
-let roomTeams = {}; // roomId → { creatorTeam, joinerTeam }
-
-// ✅ FIX: Per-socket room creation counter to prevent DoS via room spam
+const rooms = {};     // roomId → [socketId1, socketId2]
+const roomModes = {}; // tracks whether a room is "classic", "time", or "team"
+const roomTeams = {}; // tracks { creatorTeam, joinerTeam }
 const socketRoomCount = {}; // socketId → number of rooms created
+const activeUsers = {}; // tracks username -> socket.id to prevent concurrent logins
 const MAX_ROOMS_PER_SOCKET = 5;
 
 // Helper: cleanly remove a room and all associated metadata
@@ -84,7 +83,21 @@ function dealDecks(roomId) {
 
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
-    socketRoomCount[socket.id] = 0;
+
+    // ────────────────────────────────────
+    // USER REGISTRATION (Concurrent Login Prevention)
+    // ────────────────────────────────────
+    socket.on("registerUser", (username) => {
+        // If this username is already active on a different socket, reject it
+        if (activeUsers[username] && activeUsers[username] !== socket.id) {
+            console.log(`[Security] Concurrent login attempt for ${username}. Rejecting socket ${socket.id}`);
+            socket.emit("loginConflict");
+        } else {
+            // Register this socket as the active device for the user
+            activeUsers[username] = socket.id;
+            socket.username = username; // attach to socket for cleanup on disconnect
+        }
+    });
 
     // ────────────────────────────────────
     // CREATE ROOM
@@ -192,6 +205,11 @@ io.on("connection", (socket) => {
     // ────────────────────────────────────
     socket.on("disconnect", () => {
         console.log("User disconnected:", socket.id);
+
+        // Remove from active users map
+        if (socket.username && activeUsers[socket.username] === socket.id) {
+            delete activeUsers[socket.username];
+        }
 
         // ✅ FIX: Collect affected roomIds first, then process them.
         // Previously the loop mutated `rooms` while iterating it, creating a

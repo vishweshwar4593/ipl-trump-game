@@ -43,9 +43,8 @@ function HomeScreen({
 
             {/* 🔊 Mute Button - top right */}
             <button
-                className="home-btn"
+                className="mute-btn"
                 onClick={toggleMute}
-                style={{ position: 'absolute', top: '14px', right: '14px', zIndex: 100, width: 'auto', padding: '10px 14px', fontSize: '20px' }}
             >
                 {isMuted ? "🔇" : "🔊"}
             </button>

@@ -291,18 +291,121 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(5px);
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
 }
 
+/* Premium Glassmorphic Modal */
+.modal {
+  background: rgba(18, 18, 36, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.6);
+  border-radius: 20px;
+  padding: 35px 30px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  animation: modalScaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-sizing: border-box;
+}
+
+@keyframes modalScaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.modal h2 {
+  color: #ffd700; /* Premier Gold */
+  font-size: 24px;
+  margin-top: 0;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
+}
+
+.modal p {
+  color: #cccccc;
+  font-size: 15px;
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+/* Modal Action Buttons */
+.modal .confirm-btn, .modal .cancel-btn {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px 28px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 100px;
+}
+
+/* Confirm / Yes Button */
+.modal .confirm-btn {
+  background: linear-gradient(135deg, #ff4b2b, #ff416c);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 15px rgba(255, 65, 108, 0.3);
+}
+
+.modal .confirm-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 65, 108, 0.4);
+}
+
+/* Cancel Button */
+.modal .cancel-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.modal .cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
 
 
 /* ===== HOME SCREEN ===== */
 /* ===== HOME SCREEN ===== */
+.mute-btn {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+}
+
+.mute-btn:hover {
+  transform: scale(1.1) rotate(8deg);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.2);
+}
+
 .home {
   position: relative;
   width: 100vw;
@@ -375,8 +478,10 @@ body {
   font-weight: 900;
   letter-spacing: 3px;
   margin-bottom: 12px;
-  color: white;
-  text-shadow: 0 0 25px rgba(255, 255, 255, 0.18);
+  background: linear-gradient(135deg, #ffffff, #ffd700, #ff8c00);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 25px rgba(255, 215, 0, 0.2);
 }
 
 .home-subtitle {
