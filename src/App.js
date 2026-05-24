@@ -11,6 +11,7 @@ import GameHeader from "./components/GameHeader";
 import GameBoard from "./components/GameBoard";
 import OnlineMode from "./modes/OnlineMode";
 import LoginScreen from "./components/LoginScreen";
+import EmotePanel from "./components/EmotePanel";
 import socket from "./socket";
 import { useGameAudio } from "./hooks/useGameAudio";
 import { useGameEngine } from "./hooks/useGameEngine";
@@ -372,6 +373,11 @@ function App() {
         ) : (
           <div className="loading">Checking winner...</div>
         )}
+
+        <EmotePanel 
+          playStyle={playStyle} 
+          roomId={localStorage.getItem("roomId")} 
+        />
       </div>
     </div>
   );

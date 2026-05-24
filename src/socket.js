@@ -1,6 +1,7 @@
 import { io } from "socket.io-client";
 
-const SOCKET_URL = "https://ipl-trump-game.onrender.com";
+const SOCKET_URL = "http://localhost:5000";
+
 if (process.env.NODE_ENV === "development") {
   console.log("Connecting to:", SOCKET_URL);
 }

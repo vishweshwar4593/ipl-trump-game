@@ -180,6 +180,14 @@ io.on("connection", (socket) => {
     });
 
     // ────────────────────────────────────
+    // EMOTES / CHAT
+    // ────────────────────────────────────
+    socket.on("sendEmote", ({ roomId, emote }) => {
+        // Broadcast the emote to the opponent in the same room
+        socket.to(roomId).emit("receiveEmote", emote);
+    });
+
+    // ────────────────────────────────────
     // DISCONNECT
     // ────────────────────────────────────
     socket.on("disconnect", () => {
