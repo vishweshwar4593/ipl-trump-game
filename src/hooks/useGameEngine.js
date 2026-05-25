@@ -21,8 +21,8 @@ export function useGameEngine({
   playWin,
   playLose,
   playHit,
-MAX_HP = 500,
-  TURN_TIMEOUT = 10000,
+  MAX_HP = 500,
+  TURN_TIMEOUT = 15000,
   players,
   resumedGameState,
   onlineRole
@@ -510,6 +510,7 @@ const shouldRunTimeout =
     player, ai,
     handleStatClick,
     handleTurnTimeout,
-    getBestStat
+    getBestStat,
+    TURN_TIMEOUT
   };
 }

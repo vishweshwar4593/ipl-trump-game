@@ -24,7 +24,8 @@ function GameBoard({
     turnTimerKey,
     isTimeoutActive,
     gameMode,
-    playStyle
+    playStyle,
+    turnTimeout
 }) {
 
     // ✅ ADD THIS LINE
@@ -41,6 +42,7 @@ function GameBoard({
                     isMultiplayerMode={isMultiplayerMode}
                     turnTimerKey={turnTimerKey}
                     showTimeoutGlow={isTimeoutActive && turn === "player"}
+                    turnTimeout={turnTimeout}
                     style={
                         animate
                             ? winner === "ai"
@@ -84,6 +86,7 @@ function GameBoard({
                     isMultiplayerMode={isMultiplayerMode}
                     turnTimerKey={turnTimerKey}
                     showTimeoutGlow={isTimeoutActive && turn === "ai" && isMultiplayerMode}
+                    turnTimeout={turnTimeout}
                     style={
                         animate
                             ? winner === "player"

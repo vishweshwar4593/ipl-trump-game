@@ -20,14 +20,28 @@ const teamColors = {
   "gujarat titans": "rgba(100, 100, 100, 0.6)"
 };
 
+const teamGlowColors = {
+  "mumbai indians": "#004ba0",              // Deep Blue
+  "chennai super kings": "#ffd700",         // Yellow
+  "royal challengers bengaluru": "#ff1818",  // Red
+  "kolkata knight riders": "#703893",       // Purple
+  "delhi capitals": "#17449b",              // Blue (Blue & Red themed)
+  "sunrisers hyderabad": "#ff822a",         // Orange
+  "rajasthan royals": "#ea1a85",            // Pink (Pink & Blue themed)
+  "punjab kings": "#a30f14",                // Deep Crimson / Red
+  "gujarat titans": "#1b3b6f",              // Navy Blue (Navy & Gold themed)
+  "lucknow super giants": "#39ff88"         // Lush Green
+};
 
 
-const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, animate, turn, showCard, move, style, isMultiplayerMode, turnTimerKey, showTimeoutGlow, gameMode, playStyle }, ref) => {
+
+const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, animate, turn, showCard, move, style, isMultiplayerMode, turnTimerKey, showTimeoutGlow, gameMode, playStyle, turnTimeout = 20000 }, ref) => {
 
   if (!player) return null;
   const teamKey = player?.team?.trim().toLowerCase();
   const logo = teamLogos[teamKey] || FALLBACK_LOGO; // ✅ FIX: neutral fallback, not CSK
   const borderColor = teamColors[teamKey] || "#FFD700";
+  const glowColor = teamGlowColors[teamKey] || "#39ff88";
 
 
   const statsList = [
@@ -85,6 +99,7 @@ const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, anim
         <svg className="timeout-border-svg" viewBox="0 0 300 420" preserveAspectRatio="none">
           <rect
             className="timeout-border-track"
+            style={{ stroke: `${glowColor}22` }}
             x="3"
             y="3"
             width="294"
@@ -94,6 +109,11 @@ const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, anim
           />
           <rect
             className="timeout-border-progress"
+            style={{
+              animationDuration: `${turnTimeout / 1000}s`,
+              stroke: glowColor,
+              filter: `drop-shadow(0 0 6px ${glowColor}) drop-shadow(0 0 12px ${glowColor})`
+            }}
             x="3"
             y="3"
             width="294"

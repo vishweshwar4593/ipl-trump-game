@@ -162,15 +162,15 @@ async function resolveTeamsWithDedicatedMappingKey(playersList) {
 
         console.log(`[Mapping Batch ${batchIndex}/${totalBatches}] Querying teams for: ${batch.map(p => p.name).join(", ")}`);
 
-        const playerNamesString = batch.map((p, idx) => `${idx + 1}. ${p.name}`).join("\n");
+        const playerNamesString = batch.map((p, idx) => `${idx + 1}. currently ${p.name} belongs to which ipl team`).join("\n");
 
         const prompt = `
-          Retrieve the correct, official, current latest Indian Premier League (IPL) franchise team (as of the current completed or ongoing IPL season in May 2026) that each of the following ${batch.length} cricket players is signed with or plays for:
+          Retrieve the correct, official, current latest Indian Premier League (IPL) franchise team (as of the current completed or ongoing IPL season in May 2026) by answering each of the following questions:
           ${playerNamesString}
 
           CRITICAL DIRECTIONS:
           1. Return ONLY the current/latest team franchise for each player as of May 2026. Do not list historical teams they played for in the past.
-          2. If a player is retired from all active IPL play (e.g. Suresh Raina, AB de Villiers, Lasith Malinga, Gautam Gambhir, Yuvraj Singh, Sachin Tendulkar), return their last/latest team franchise they played for (e.g., Chennai Super Kings, Royal Challengers Bengaluru, Mumbai Indians).
+          2. If a player is retired from all active IPL play or currently unsold (e.g. Suresh Raina, AB de Villiers, Lasith Malinga, Gautam Gambhir, Yuvraj Singh, Sachin Tendulkar), return their last/latest team franchise they played for (e.g., Chennai Super Kings, Royal Challengers Bengaluru, Mumbai Indians). DO NOT return "Retired" or "Unsold" as their team under any circumstances.
           3. Grounding Benchmarks:
              - Ravindra Jadeja plays for "Chennai Super Kings".
              - Bhuvneshwar Kumar plays for "Royal Challengers Bengaluru".

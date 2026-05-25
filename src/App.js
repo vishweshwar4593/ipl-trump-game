@@ -108,7 +108,7 @@ function App() {
     playerDeck, setPlayerDeck, aiDeck, setAiDeck,
     turn, drawPile, showPlayerCard, showAiCard,
     playerHP, aiHP, turnTimerKey, gameOver, setGameOver,
-    player, ai, handleStatClick
+    player, ai, handleStatClick, TURN_TIMEOUT
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
     playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole
@@ -422,6 +422,7 @@ function App() {
             getMoveStyle={getMoveStyle}
             isTimeoutActive={selectedStat === null && !gameOver && !animate}
             playStyle={playStyle}
+            turnTimeout={TURN_TIMEOUT}
           />
         ) : (
           <div className="loading">Checking winner...</div>
