@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const players = require("./players.json"); // ✅ local copy, safe for deployment
+const { initCron } = require("./cronScheduler");
 
 const app = express();
 const server = http.createServer(app);
@@ -240,4 +241,6 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    // Start the automatic stats updater cron job
+    initCron();
 });
