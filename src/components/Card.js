@@ -1,6 +1,7 @@
 import React, { forwardRef } from "react";
 import teamLogos from "../data/teamLogos";
 import back from "../assets/back.png";
+import { getModifiedStat } from "../hooks/useGameEngine";
 
 // ✅ FIX: neutral cricket ball SVG used as fallback instead of silently
 // showing another team's (CSK) logo for unrecognised team names
@@ -35,7 +36,26 @@ const teamGlowColors = {
 
 
 
-const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, animate, turn, showCard, move, style, isMultiplayerMode, turnTimerKey, showTimeoutGlow, gameMode, playStyle, turnTimeout = 20000 }, ref) => {
+const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, animate, turn, showCard, move, style, isMultiplayerMode, turnTimerKey, showTimeoutGlow, gameMode, playStyle, turnTimeout = 20000, pitchCondition, round, weather, moisture, swapGraceActive }, ref) => {
+
+  const mod = (round - 1) % 3;
+  const isPowerplay = mod === 0;
+  const isMiddleOvers = mod === 1;
+  const isDeathOvers = mod === 2;
+
+  const isStatEligible = (key) => {
+    if (gameMode !== "team" && gameMode !== "tournament") return true;
+    if (isPowerplay) {
+      return ['runs', 'hs', 'battingAvg', 'battingSR', 'hundreds', 'fifties'].includes(key);
+    }
+    if (isMiddleOvers) {
+      return ['matches', 'catches'].includes(key);
+    }
+    if (isDeathOvers) {
+      return ['wickets', 'economy', 'bowlingAvg', 'bowlingSR'].includes(key);
+    }
+    return true;
+  };
 
   if (!player) return null;
   const teamKey = player?.team?.trim().toLowerCase();
@@ -141,41 +161,59 @@ const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, anim
           </div>
 
           <div className="stats">
-            {statsList.map((stat) => (
-              <div
-                key={stat.key}
-                className={`stat 
-  ${selectedStat === stat.key ? "active" : ""} 
-  ${selectedStat && selectedStat !== stat.key ? "dim" : ""}
-  ${(playStyle === "online"
-                    ? (type === "player" && turn === "player")
-                    : (
-                      (type === "player" && turn === "player") ||
-                      (isMultiplayerMode && type === "ai" && turn === "ai")
-                    )
-                  ) && !selectedStat
-                    ? "clickable"
-                    : "disabled-stat"
-                  }`}
-                onClick={() => {
-                  const isPlayer1Turn = type === "player" && turn === "player";
-                  const isPlayer2Turn = isMultiplayerMode && type === "ai" && turn === "ai";
+            {statsList.map((stat) => {
+              const eligible = isStatEligible(stat.key);
+              const isLowerBetter = ["economy", "bowlingAvg", "bowlingSR"].includes(stat.key);
 
-                  if (
-                    (playStyle === "online"
-                      ? isPlayer1Turn
-                      : (isPlayer1Turn || isPlayer2Turn)
-                    ) &&
-                    !selectedStat
-                  ) {
-                    onStatClick(stat.key);
+              const originalVal = player[stat.key] ?? 0;
+              const modifiedVal = getModifiedStat(player, stat.key, pitchCondition, weather, moisture);
+              
+              let statStyle = {};
+              let arrow = null;
+
+              if (pitchCondition) {
+                if (modifiedVal !== originalVal) {
+                  const isImproved = isLowerBetter ? (modifiedVal < originalVal) : (modifiedVal > originalVal);
+                  if (isImproved) {
+                    statStyle = { color: "#39ff88", textShadow: "0 0 8px rgba(57, 255, 136, 0.4)" };
+                    arrow = <span style={{ marginLeft: "4px", fontSize: "12px" }}>▲</span>;
+                  } else {
+                    statStyle = { color: "#ff4b2b", textShadow: "0 0 8px rgba(255, 75, 43, 0.4)" };
+                    arrow = <span style={{ marginLeft: "4px", fontSize: "12px" }}>▼</span>;
                   }
-                }}
-              >
-                <div className="label">{stat.label}</div>
-                <div className="value">{player[stat.key] ?? "-"}</div>
-              </div>
-            ))}
+                }
+              }
+
+              const isUserTurn = playStyle === "online"
+                ? (type === "player" && turn === "player")
+                : (
+                  (type === "player" && turn === "player") ||
+                  (isMultiplayerMode && type === "ai" && turn === "ai")
+                );
+
+              const isClickable = isUserTurn && !selectedStat && eligible && !swapGraceActive;
+
+              return (
+                <div
+                  key={stat.key}
+                  className={`stat 
+                    ${selectedStat === stat.key ? "active" : ""} 
+                    ${selectedStat && selectedStat !== stat.key ? "dim" : ""}
+                    ${isClickable ? "clickable" : eligible ? "disabled-stat" : "locked-stat"}`}
+                  onClick={() => {
+                    if (isClickable) {
+                      onStatClick(stat.key);
+                    }
+                  }}
+                >
+                  <div className="label">{stat.label}</div>
+                  <div className="value" style={statStyle}>
+                    {modifiedVal ?? "-"}
+                    {arrow}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="footer">

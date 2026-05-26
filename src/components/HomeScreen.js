@@ -126,7 +126,9 @@ function HomeScreen({
                         <p style={{ marginBottom: '20px', color: '#666' }}>How would you like to play?</p>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                             <button className="play-btn" style={{ padding: '15px', fontSize: '18px' }} onClick={() => handleSelectPlayStyle('ai')}>🤖 Play vs AI</button>
-                            <button className="play-btn" style={{ padding: '15px', fontSize: '18px', backgroundColor: '#9b59b6' }} onClick={() => handleSelectPlayStyle('local')}>🎮 Local Multiplayer</button>
+                            {selectedBaseMode !== "tournament" && (
+                                <button className="play-btn" style={{ padding: '15px', fontSize: '18px', backgroundColor: '#9b59b6' }} onClick={() => handleSelectPlayStyle('local')}>🎮 Local Multiplayer</button>
+                            )}
                             <button className="play-btn" style={{ padding: '15px', fontSize: '18px', backgroundColor: '#e67e22' }} onClick={() => handleSelectPlayStyle('online')}>🌐 Play Online</button>
                             <button className="close-btn" style={{ marginTop: '10px' }} onClick={() => setSelectedBaseMode(null)}>Cancel</button>
                         </div>
@@ -200,6 +202,17 @@ function HomeScreen({
                         <div className="mode-actions">
                             <button className="play-btn" onClick={() => setSelectedBaseMode("team")}>Play</button>
                             <button className="rules-btn" onClick={() => setRulesMode("team")}>Rules</button>
+                        </div>
+                    </div>
+
+                    <div className="mode-card">
+                        <div className="mode-icon">🏆</div>
+                        <h3>Tournament</h3>
+                        <span className="mode-tag">Road to the Trophy</span>
+                        <p>Select your team and play a 9-match season with Playoffs.</p>
+                        <div className="mode-actions">
+                            <button className="play-btn" onClick={() => setSelectedBaseMode("tournament")}>Play</button>
+                            <button className="rules-btn" onClick={() => setRulesMode("tournament")}>Rules</button>
                         </div>
                     </div>
 

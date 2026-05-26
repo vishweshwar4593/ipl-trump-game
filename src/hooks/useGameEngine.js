@@ -6,6 +6,194 @@ const LOWER_BETTER = ["economy", "bowlingAvg", "bowlingSR"];
 const battingStats = ["runs", "matches", "hs", "battingAvg", "battingSR", "hundreds", "fifties", "catches"];
 const bowlingStats = ["wickets", "economy", "bowlingAvg", "bowlingSR"];
 
+const SPINNERS = [
+  "yuzvendra chahal", "rashid khan", "sunil narine", "ravichandran ashwin", 
+  "amit mishra", "piyush chawla", "harbhajan singh", "imran tahir", 
+  "krunal pandya", "ravindra jadeja", "axar patel", "varun chakravarthy", 
+  "kuldeep yadav", "maheesh theekshana", "murugan ashwin", "karn sharma",
+  "k gowtham", "krishnappa gowtham", "lalit yadav", "mark watt", "shakib al hasan"
+];
+
+export function getPlayerRole(playerCard) {
+  if (!playerCard) return "unknown";
+  const nameLower = playerCard.name ? playerCard.name.trim().toLowerCase() : "";
+  const wickets = playerCard.wickets ?? 0;
+  const runs = playerCard.runs ?? 0;
+
+  const isSpinner = SPINNERS.some(s => nameLower.includes(s));
+  if (isSpinner) return "spinner";
+
+  const isPace = wickets > 30 && runs < wickets * 15;
+  if (isPace) return "pace";
+
+  if (runs > 1000 || (playerCard.battingAvg ?? 0) > 24) return "batsman";
+
+  return "allrounder";
+}
+
+const getNextWeather = (currentWeather, roundNumber) => {
+  const rand = Math.random();
+  if (currentWeather === "sunny") {
+    if (rand < 0.70) return "sunny";
+    if (rand < 0.90) return "windy";
+    return "cloudy";
+  }
+  if (currentWeather === "cloudy") {
+    if (rand < 0.60) return "cloudy";
+    if (rand < 0.85) return "sunny";
+    return "windy";
+  }
+  if (currentWeather === "windy") {
+    if (roundNumber >= 5 && rand < 0.20) return "dew";
+    if (rand < 0.60) return "windy";
+    if (rand < 0.85) return "sunny";
+    return "cloudy";
+  }
+  if (currentWeather === "dew") {
+    if (rand < 0.70) return "dew";
+    if (rand < 0.90) return "windy";
+    return "cloudy";
+  }
+  return "sunny";
+};
+
+export function getModifiedStat(playerCard, statKey, pitchCondition, weather, moisture) {
+  if (!playerCard) return 0;
+  const originalValue = playerCard[statKey] ?? 0;
+  if (!pitchCondition || !weather || moisture === undefined || moisture === null) return originalValue;
+
+  const role = getPlayerRole(playerCard);
+  const runs = playerCard.runs ?? 0;
+  const isPowerHitter = (playerCard.battingSR ?? 0) >= 130 && runs > 300;
+
+  let multiplier = 1.0;
+
+  // Pace Bowler Modifiers
+  if (role === "pace") {
+    if (statKey === "wickets") {
+      if (moisture >= 75) multiplier += 0.20; // Wet Pitch
+      if (weather === "cloudy") multiplier += 0.15; // Cloudy Swing
+      if (weather === "dew") multiplier -= 0.15; // Dew slip
+    }
+    if (statKey === "economy") {
+      if (weather === "cloudy") multiplier -= 0.10; // Better control
+      if (weather === "dew") multiplier += 0.20; // Worse control
+    }
+  }
+
+  // Spin Bowler Modifiers
+  if (role === "spinner") {
+    if (statKey === "wickets") {
+      if (moisture < 25) multiplier += 0.30; // Cracked Pitch
+      else if (moisture < 50) multiplier += 0.15; // Dry Pitch
+      if (weather === "sunny") multiplier += 0.10; // Sun bake grip
+      if (weather === "dew") multiplier -= 0.25; // Dew slip
+    }
+    if (statKey === "economy") {
+      if (moisture < 25) multiplier -= 0.15; // Hard to play spin
+      if (weather === "dew") multiplier += 0.30; // Dew boundary hitting
+    }
+  }
+
+  // Batsman Modifiers
+  if (role === "batsman" || role === "allrounder") {
+    if (statKey === "runs") {
+      if (weather === "dew") multiplier += 0.15; // True bounce scoring
+      if (weather === "windy" && isPowerHitter) multiplier += 0.15; // Wind assisted boundaries
+    }
+    if (statKey === "battingSR") {
+      if (moisture >= 75) multiplier -= 0.15; // Sticky pitch
+      if (weather === "dew") multiplier += 0.10; // Slides on bat
+      if (weather === "windy" && isPowerHitter) multiplier += 0.15; // Wind assisted SR
+    }
+    if (statKey === "battingAvg") {
+      if (moisture < 25) multiplier -= 0.15; // Uneven bounce cracking
+    }
+  }
+
+  // Apply final multiplier based on stat type
+  if (statKey === "wickets" || statKey === "runs" || statKey === "hs") {
+    return Math.round(originalValue * multiplier);
+  }
+  
+  if (["economy", "bowlingAvg", "bowlingSR", "battingAvg", "battingSR"].includes(statKey)) {
+    const decimals = ["economy", "bowlingAvg", "battingAvg"].includes(statKey) ? 2 : 1;
+    return Number((originalValue * multiplier).toFixed(decimals));
+  }
+
+  return originalValue;
+}
+
+const getClutchReplacementsScore = (card, gameMode, round, pitchCondition, weather, moisture) => {
+  if (!card) return 0;
+  let score = 0;
+  const role = getPlayerRole(card);
+  const runs = card.runs ?? 0;
+  const wickets = card.wickets ?? 0;
+
+  const mod = (round - 1) % 3;
+  const isPowerplay = mod === 0;
+  const isMiddleOvers = mod === 1;
+  const isDeathOvers = mod === 2;
+
+  if (isPowerplay && role === "batsman") score += 100;
+  if (isDeathOvers && role === "pace") score += 100;
+  if (isMiddleOvers && (role === "allrounder" || role === "spinner")) score += 50;
+
+  if (pitchCondition) {
+    if (pitchCondition === "green" && role === "pace") score += 50;
+    if (pitchCondition === "dusty" && role === "spinner") score += 50;
+  }
+  if (weather === "cloudy" && role === "pace") score += 30;
+  if (weather === "dew" && (role === "batsman" || role === "allrounder")) score += 40;
+
+  score += Math.max(runs / 100, wickets);
+  return score;
+};
+
+export function getClutchReplacements(deck, gameMode, round, pitchCondition, weather, moisture) {
+  if (!deck || deck.length < 2) return [];
+  const remaining = deck.slice(1);
+  if (remaining.length === 0) return [];
+  if (remaining.length === 1) return [remaining[0]];
+
+  const scoredCards = remaining.map(card => {
+    const score = getClutchReplacementsScore(card, gameMode, round, pitchCondition, weather, moisture) + Math.random() * 15;
+    return { card, score };
+  });
+
+  const sorted = scoredCards.sort((a, b) => b.score - a.score);
+  return [sorted[0].card, sorted[1].card];
+}
+
+const shouldAISwap = (aiCard, roundNumber, pitchCondition, weather, moisture, aiSwapUsed, aiDeckLength) => {
+  if (aiSwapUsed || aiDeckLength < 3 || !aiCard) return false;
+  
+  const role = getPlayerRole(aiCard);
+  const isPace = role === "pace";
+  const isSpinner = role === "spinner";
+  const isBatsman = role === "batsman";
+  
+  const mod = (roundNumber - 1) % 3;
+  const isPowerplay = mod === 0;
+  const isDeathOvers = mod === 2;
+
+  if (isDeathOvers && isBatsman) return true;
+  if (isPowerplay && (isSpinner || isPace)) return true;
+
+  if (pitchCondition) {
+    if (pitchCondition === "green" && isSpinner) return true;
+    if (pitchCondition === "dusty" && isPace) return true;
+    if (weather === "dew" && isSpinner) return true;
+  }
+
+  const maxRuns = aiCard.runs ?? 0;
+  const maxWickets = aiCard.wickets ?? 0;
+  if (maxRuns < 500 && maxWickets < 15) return true;
+
+  return false;
+};
+
 function shuffle(array) {
   return [...array].sort(() => Math.random() - 0.5);
 }
@@ -22,7 +210,7 @@ export function useGameEngine({
   playLose,
   playHit,
   MAX_HP = 500,
-  TURN_TIMEOUT = 15000,
+  TURN_TIMEOUT = 12000,
   players,
   resumedGameState,
   onlineRole
@@ -40,7 +228,17 @@ export function useGameEngine({
   const [playerHP, setPlayerHP] = useState(MAX_HP);
   const [aiHP, setAiHP] = useState(MAX_HP);
   const [turnTimerKey, setTurnTimerKey] = useState(0);
+  const [playerSwapUsed, setPlayerSwapUsed] = useState(false);
+  const [aiSwapUsed, setAiSwapUsed] = useState(false);
+  const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const [swapCandidates, setSwapCandidates] = useState([]);
+  const [swapAnnouncement, setSwapAnnouncement] = useState(null);
+  const [swapGraceActive, setSwapGraceActive] = useState(true);
+  const [swapGraceTimeLeft, setSwapGraceTimeLeft] = useState(3);
   const [gameOver, setGameOver] = useState(false);
+  const [pitchCondition, setPitchCondition] = useState(null);
+  const [weather, setWeather] = useState(null);
+  const [moisture, setMoisture] = useState(null);
 
   const player = playerDeck[0];
   const ai = aiDeck[0];
@@ -49,6 +247,79 @@ export function useGameEngine({
   // without needing it in the useCallback dependency array (avoids stale closure).
   const drawPileRef = useRef(drawPile);
   useEffect(() => { drawPileRef.current = drawPile; }, [drawPile]);
+
+  useEffect(() => {
+    if (gameMode !== "time" && gameMode !== "battle") {
+      setPitchCondition(null);
+      setWeather(null);
+      setMoisture(null);
+      return;
+    }
+    
+    // Initialize on Round 1
+    if (round === 1) {
+      const initialWeathers = ["sunny", "cloudy", "windy"];
+      const startWeather = initialWeathers[Math.floor(Math.random() * initialWeathers.length)];
+      setWeather(startWeather);
+      
+      const startMoisture = startWeather === "sunny" ? 60 : startWeather === "windy" ? 70 : 85;
+      setMoisture(startMoisture);
+      
+      const startPitch = startMoisture >= 75 ? "green" : startMoisture >= 50 ? "balanced" : startMoisture >= 25 ? "dry" : "dusty";
+      setPitchCondition(startPitch);
+      return;
+    }
+    
+    // Transition on every subsequent round
+    setWeather(prevWeather => {
+      if (!prevWeather) return "sunny";
+      const nextWeather = getNextWeather(prevWeather, round);
+      
+      let change = 0;
+      if (prevWeather === "sunny") {
+        change = -(10 + Math.floor(Math.random() * 9)); // Sunny dries -10 to -18
+      } else if (prevWeather === "windy") {
+        change = -(5 + Math.floor(Math.random() * 8)); // Windy dries -5 to -12
+      } else if (prevWeather === "cloudy") {
+        change = -(1 + Math.floor(Math.random() * 4)); // Cloudy dries -1 to -4
+      } else if (prevWeather === "dew") {
+        change = 6 + Math.floor(Math.random() * 9); // Dew increases +6 to +14
+      }
+      
+      setMoisture(prevMoisture => {
+        const baseMoisture = prevMoisture ?? 70;
+        const nextMoisture = Math.min(Math.max(baseMoisture + change, 0), 100);
+        
+        const nextPitch = nextMoisture >= 75 ? "green" : nextMoisture >= 50 ? "balanced" : nextMoisture >= 25 ? "dry" : "dusty";
+        setPitchCondition(nextPitch);
+        
+        return nextMoisture;
+      });
+      
+      return nextWeather;
+    });
+  }, [round, gameMode]);
+
+  useEffect(() => {
+    // Reset swap grace on every round increment
+    setSwapGraceActive(true);
+    setSwapGraceTimeLeft(3);
+  }, [round]);
+
+  useEffect(() => {
+    if (!swapGraceActive) return;
+    const interval = setInterval(() => {
+      setSwapGraceTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setSwapGraceActive(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [swapGraceActive]);
 
   useEffect(() => {
     if (!gameMode) return;
@@ -63,6 +334,8 @@ export function useGameEngine({
       setRound(resumedGameState.round);
       setPlayerHP(resumedGameState.playerHP);
       setAiHP(resumedGameState.aiHP);
+      setPlayerSwapUsed(resumedGameState.playerSwapUsed ?? false);
+      setAiSwapUsed(resumedGameState.aiSwapUsed ?? false);
       setSelectedStat(null);
       setWinner(null);
       setDrawPile([]);
@@ -84,6 +357,27 @@ export function useGameEngine({
       const aiPlayers = players.filter(p => p.team === aiTeam);
       setPlayerDeck(shuffle(playerPlayers));
       setAiDeck(shuffle(aiPlayers));
+    } else if (gameMode === "tournament") {
+      let deckLimit = 7;
+      try {
+        const str = localStorage.getItem("savedTournamentState");
+        const savedTournament = str ? JSON.parse(str) : null;
+        if (savedTournament && savedTournament.stage === "playoffs" && savedTournament.playoffs) {
+          const play = savedTournament.playoffs;
+          const playerTeamLocal = savedTournament.playerTeam;
+          const isFinalActive = play.final && play.final.home && !play.final.played && (play.final.home === playerTeamLocal || play.final.away === playerTeamLocal);
+          if (isFinalActive) {
+            deckLimit = 11;
+          } else {
+            deckLimit = 9;
+          }
+        }
+      } catch (e) {}
+
+      const playerPlayers = players.filter(p => p.team === playerTeam);
+      const aiPlayers = players.filter(p => p.team === aiTeam);
+      setPlayerDeck(shuffle(playerPlayers).slice(0, deckLimit));
+      setAiDeck(shuffle(aiPlayers).slice(0, deckLimit));
     } else {
       const shuffled = shuffle(players);
       const half = Math.floor(shuffled.length / 2);
@@ -134,13 +428,15 @@ export function useGameEngine({
         turn,
         round,
         playerHP,
-        aiHP
+        aiHP,
+        playerSwapUsed,
+        aiSwapUsed
       };
       localStorage.setItem("savedGameState", JSON.stringify(saveData));
     }, 400); // debounce — only write once the state has settled
 
     return () => clearTimeout(timer);
-  }, [playerDeck, aiDeck, turn, round, playerHP, aiHP, gameMode, isBattleMode, isMultiplayerMode, playerTeam, aiTeam, gameOver, selectedStat, playStyle]);
+  }, [playerDeck, aiDeck, turn, round, playerHP, aiHP, gameMode, isBattleMode, isMultiplayerMode, playerTeam, aiTeam, gameOver, selectedStat, playStyle, playerSwapUsed, aiSwapUsed]);
 
   const getBestStat = useCallback((playerObj) => {
     if (!playerObj) return "runs";
@@ -157,19 +453,30 @@ export function useGameEngine({
     }
 
     let statsPool;
-    if (playerType === "batsman") {
-      statsPool = battingStats;
-    } else if (playerType === "bowler") {
-      statsPool = bowlingStats;
+    if (gameMode === "team" || gameMode === "tournament") {
+      const mod = (round - 1) % 3;
+      if (mod === 0) {
+        statsPool = ["runs", "hs", "battingAvg", "battingSR", "hundreds", "fifties"];
+      } else if (mod === 1) {
+        statsPool = ["matches", "catches"];
+      } else {
+        statsPool = ["wickets", "economy", "bowlingAvg", "bowlingSR"];
+      }
     } else {
-      statsPool = [...battingStats, ...bowlingStats];
+      if (playerType === "batsman") {
+        statsPool = battingStats;
+      } else if (playerType === "bowler") {
+        statsPool = bowlingStats;
+      } else {
+        statsPool = [...battingStats, ...bowlingStats];
+      }
     }
 
     let bestStat = null;
     let bestScore = -Infinity;
 
     statsPool.forEach(stat => {
-      let value = playerObj[stat] ?? 0;
+      let value = getModifiedStat(playerObj, stat, pitchCondition, weather, moisture);
       if (value === 0) return;
 
       let score;
@@ -196,11 +503,14 @@ export function useGameEngine({
     });
 
     if (!bestStat) {
+      if (gameMode === "team" || gameMode === "tournament") {
+        return statsPool[Math.floor(Math.random() * statsPool.length)];
+      }
       const fallbackStats = ["runs", "wickets", "catches"];
       return fallbackStats[Math.floor(Math.random() * fallbackStats.length)];
     }
     return bestStat;
-  }, []);
+  }, [gameMode, round, pitchCondition, weather, moisture]);
 
 const handleTurnTimeout = useCallback(() => {
     if (!player || !ai || selectedStat !== null || animate || gameOver) return;
@@ -300,8 +610,8 @@ const handleTurnTimeout = useCallback(() => {
 
     playClick();
 
-    const playerValue = player[stat];
-    const aiValue = ai[stat];
+    const playerValue = getModifiedStat(player, stat, pitchCondition, weather, moisture);
+    const aiValue = getModifiedStat(ai, stat, pitchCondition, weather, moisture);
     // ✅ FIX 3: Always read the latest drawPile via ref — avoids stale closure bug
     const currentDrawPile = drawPileRef.current;
     let damage = 0;
@@ -351,7 +661,7 @@ const handleTurnTimeout = useCallback(() => {
     setTimeout(() => {
       if (result === "player") {
         if (isBattleMode) setAiHP(prev => Math.max(prev - damage, 0));
-        if (gameMode === "team") {
+        if (gameMode === "team" || gameMode === "tournament") {
           setPlayerDeck(prev => {
             const currentPlayerCard = prev[0];
             return [...prev.slice(1), currentPlayerCard];
@@ -366,7 +676,7 @@ const handleTurnTimeout = useCallback(() => {
         setDrawPile([]);
       } else if (result === "ai") {
         if (isBattleMode) setPlayerHP(prev => Math.max(prev - damage, 0));
-        if (gameMode === "team") {
+        if (gameMode === "team" || gameMode === "tournament") {
           setAiDeck(prev => {
             const currentAiCard = prev[0];
             return [...prev.slice(1), currentAiCard];
@@ -380,7 +690,7 @@ const handleTurnTimeout = useCallback(() => {
         setPlayerDeck(prev => prev.slice(1));
         setDrawPile([]);
       } else {
-        if (gameMode === "team") {
+        if (gameMode === "team" || gameMode === "tournament") {
           setDrawPile([]);
         } else {
           setDrawPile(prev => shuffle([...prev, player, ai]));
@@ -389,10 +699,10 @@ const handleTurnTimeout = useCallback(() => {
         setAiDeck(prev => prev.slice(1));
       }
 
-      // In offline team mode: remove any cross-team cards after captures
-      // In online team mode: server already dealt pure team decks; captures are discarded
+      // In offline team/tournament mode: remove any cross-team cards after captures
+      // In online team/tournament mode: server already dealt pure team decks; captures are discarded
       // by the slice/no-push logic above, so no extra filter needed online
-      if (gameMode === "team" && playStyle !== "online") {
+      if ((gameMode === "team" || gameMode === "tournament") && playStyle !== "online") {
         setPlayerDeck(prev => prev.filter(p => p?.team === playerTeam));
         setAiDeck(prev => prev.filter(p => p?.team === aiTeam));
       }
@@ -409,7 +719,7 @@ const handleTurnTimeout = useCallback(() => {
       else if (result === "ai") setTurn("ai");
       // draw: turn stays unchanged
     }, 2000);
-  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn]);
+  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture]);
   // ✅ FIX 3: drawPile removed from deps — now read via drawPileRef to prevent stale closure
 
   // ✅ FIX 2: Keep a stable ref to the latest handleStatClick so the socket listener
@@ -426,6 +736,64 @@ const handleTurnTimeout = useCallback(() => {
     return () => socket.off("bothPlayed", handler); // ✅ remove only this specific handler
   }, []); // empty deps — intentional, handler ref keeps it fresh
 
+  // Option B: Opponent swapped synchronization listener
+  const handleOpponentSwapped = useCallback((selectedCandidate) => {
+    setAiDeck(prevDeck => {
+      if (!prevDeck || prevDeck.length === 0) return prevDeck;
+      const oldActive = prevDeck[0];
+      const remaining = prevDeck.slice(1).filter(c => c.name !== selectedCandidate.name);
+      
+      // Shuffle old card back into opponent's deck
+      const shuffledRemaining = [...remaining, oldActive].sort(() => Math.random() - 0.5);
+      return [selectedCandidate, ...shuffledRemaining];
+    });
+    setAiSwapUsed(true);
+    
+    // Trigger notification banner
+    setSwapAnnouncement(`🔄 Opponent Tactical Swap: subbed in ${selectedCandidate.name}!`);
+    setTimeout(() => setSwapAnnouncement(null), 4000);
+  }, []);
+
+  const handleOpponentSwappedRef = useRef(handleOpponentSwapped);
+  useEffect(() => { handleOpponentSwappedRef.current = handleOpponentSwapped; }, [handleOpponentSwapped]);
+
+  useEffect(() => {
+    const handler = (candidate) => handleOpponentSwappedRef.current(candidate);
+    socket.on("opponentSwapped", handler);
+    return () => socket.off("opponentSwapped", handler);
+  }, []);
+
+  const handleOpenPlayerSwap = useCallback(() => {
+    if (isMultiplayerMode || playerSwapUsed || playerDeck.length < 3 || turn !== "player" || selectedStat !== null || animate || gameOver) return;
+    const candidates = getClutchReplacements(playerDeck, gameMode, round, pitchCondition, weather, moisture);
+    if (candidates.length < 2) return;
+    setSwapCandidates(candidates);
+    setSwapModalOpen(true);
+  }, [isMultiplayerMode, playerSwapUsed, playerDeck, turn, selectedStat, animate, gameOver, gameMode, round, pitchCondition, weather, moisture]);
+
+  const executePlayerSwap = useCallback((selectedCandidate) => {
+    if (playerSwapUsed || playerDeck.length < 3 || !selectedCandidate) return;
+    
+    const currentActiveCard = playerDeck[0];
+    const unselectedCandidate = swapCandidates.find(c => c.name !== selectedCandidate.name);
+    
+    const remainingDeck = playerDeck.slice(1).filter(c => c.name !== selectedCandidate.name && c.name !== (unselectedCandidate ? unselectedCandidate.name : ""));
+    const shuffledRemaining = shuffle([...remainingDeck, currentActiveCard, unselectedCandidate].filter(Boolean));
+    
+    setPlayerDeck([selectedCandidate, ...shuffledRemaining]);
+    setPlayerSwapUsed(true);
+    setSwapModalOpen(false);
+    
+    setSwapAnnouncement(`🔄 Tactical Swap: ${currentActiveCard.name} subbed for ${selectedCandidate.name}!`);
+    setTimeout(() => setSwapAnnouncement(null), 4000);
+
+    if (playStyle === "online") {
+      const roomId = localStorage.getItem("roomId");
+      socket.emit("playerSwapped", { roomId, selectedCandidate });
+    }
+  }, [playerSwapUsed, playerDeck, swapCandidates, playStyle]);
+
+  // Hook A: Handle card visibility and key resets when the active turn transitions
   useEffect(() => {
     if (!turn) return;
     if (playStyle === "online") {
@@ -450,7 +818,10 @@ const handleTurnTimeout = useCallback(() => {
         }
       }
     }
+  }, [turn, selectedStat, playStyle, isMultiplayerMode]);
 
+  // Hook B: AI decision and selection play logic
+  useEffect(() => {
     if (
       playStyle !== "online" &&
       !isMultiplayerMode &&
@@ -459,24 +830,45 @@ const handleTurnTimeout = useCallback(() => {
       ai &&
       !gameOver
     ) {
+      // 1. AI waits for the 5-second swap grace period to finish
+      if (swapGraceActive) {
+        return;
+      }
+
+      // 2. Once the grace period is over, check if AI should swap
+      const shouldSwap = shouldAISwap(ai, round, pitchCondition, weather, moisture, aiSwapUsed, aiDeck.length);
+      if (shouldSwap) {
+        const candidates = getClutchReplacements(aiDeck, gameMode, round, pitchCondition, weather, moisture);
+        if (candidates.length >= 2) {
+          const currentActive = aiDeck[0];
+          const score1 = getClutchReplacementsScore(candidates[0], gameMode, round, pitchCondition, weather, moisture);
+          const score2 = getClutchReplacementsScore(candidates[1], gameMode, round, pitchCondition, weather, moisture);
+          
+          const selectedCandidate = score1 >= score2 ? candidates[0] : candidates[1];
+          const unselectedCandidate = score1 >= score2 ? candidates[1] : candidates[0];
+          
+          const remainingDeck = aiDeck.slice(1).filter(c => c.name !== selectedCandidate.name && c.name !== unselectedCandidate.name);
+          const shuffledRemaining = shuffle([...remainingDeck, currentActive, unselectedCandidate].filter(Boolean));
+          
+          setAiDeck([selectedCandidate, ...shuffledRemaining]);
+          setAiSwapUsed(true);
+          
+          // Show AI swap banner in the UI
+          setSwapAnnouncement(`🔄 AI Tactical Swap: ${currentActive.name} subbed for ${selectedCandidate.name}!`);
+          setTimeout(() => setSwapAnnouncement(null), 4500);
+          
+          // Delay the AI stat selection so the user can read the announcement!
+          setTurnTimerKey(prev => prev + 1);
+          return;
+        }
+      }
+
+      // 3. Play stat normally
       const bestStat = getBestStat(ai);
       const timer = setTimeout(() => {
         handleStatClick(bestStat);
       }, 1000);
       return () => clearTimeout(timer);
-    }
-
-const shouldRunTimeout =
-      selectedStat === null &&
-      !gameOver &&
-      // ✅ FIX: simplified — `turn === "ai"` already covers the multiplayer P2 case
-      !!turn;
-
-    if (shouldRunTimeout) {
-      const timeout = setTimeout(() => {
-        handleTurnTimeout();
-      }, TURN_TIMEOUT);
-      return () => clearTimeout(timeout);
     }
   }, [
     turn,
@@ -485,12 +877,34 @@ const shouldRunTimeout =
     handleStatClick,
     isMultiplayerMode,
     gameOver,
-    handleTurnTimeout,
     gameMode,
     getBestStat,
-    TURN_TIMEOUT,
-    playStyle
+    playStyle,
+    swapGraceActive,
+    round,
+    pitchCondition,
+    weather,
+    moisture,
+    aiSwapUsed,
+    aiDeck
   ]);
+
+  const handleTurnTimeoutRef = useRef(handleTurnTimeout);
+  useEffect(() => {
+    handleTurnTimeoutRef.current = handleTurnTimeout;
+  }, [handleTurnTimeout]);
+
+  // Hook C: Turn timeout countdown timer execution
+  useEffect(() => {
+    const shouldRunTimeout = selectedStat === null && !gameOver && !!turn;
+
+    if (shouldRunTimeout) {
+      const timeout = setTimeout(() => {
+        handleTurnTimeoutRef.current();
+      }, TURN_TIMEOUT);
+      return () => clearTimeout(timeout);
+    }
+  }, [selectedStat, gameOver, turn, TURN_TIMEOUT]);
 
   return {
     selectedStat, setSelectedStat,
@@ -511,6 +925,18 @@ const shouldRunTimeout =
     handleStatClick,
     handleTurnTimeout,
     getBestStat,
-    TURN_TIMEOUT
+    TURN_TIMEOUT,
+    pitchCondition,
+    weather,
+    moisture,
+    playerSwapUsed, setPlayerSwapUsed,
+    aiSwapUsed, setAiSwapUsed,
+    swapModalOpen, setSwapModalOpen,
+    swapCandidates, setSwapCandidates,
+    swapAnnouncement, setSwapAnnouncement,
+    swapGraceActive, setSwapGraceActive,
+    swapGraceTimeLeft, setSwapGraceTimeLeft,
+    handleOpenPlayerSwap,
+    executePlayerSwap
   };
 }

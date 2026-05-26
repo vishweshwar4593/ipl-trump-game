@@ -49,7 +49,7 @@ function dealDecks(roomId) {
     const { creatorTeam, joinerTeam } = roomTeams[roomId] || {};
 
     let deck1, deck2;
-    if (gameMode === "team" && creatorTeam && joinerTeam) {
+    if ((gameMode === "team" || gameMode === "tournament") && creatorTeam && joinerTeam) {
         deck1 = players.filter(p => p.team === creatorTeam);
         deck2 = players.filter(p => p.team === joinerTeam);
     } else {
@@ -191,6 +191,13 @@ io.on("connection", (socket) => {
             return;
         }
         socket.to(roomId).emit("bothPlayed", stat);
+    });
+
+    // ────────────────────────────────────
+    // PLAYER SWAP (Option B Rich Multiplayer)
+    // ────────────────────────────────────
+    socket.on("playerSwapped", ({ roomId, selectedCandidate }) => {
+        socket.to(roomId).emit("opponentSwapped", selectedCandidate);
     });
 
     // ────────────────────────────────────

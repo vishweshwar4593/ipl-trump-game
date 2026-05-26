@@ -13,7 +13,7 @@ function OnlineMode({
     setAiTeam,
     teams = [],
 }) {
-    const isTeamMode = gameMode === "team";
+    const isTeamMode = gameMode === "team" || gameMode === "tournament";
 
     // Shared state
     const [roomId, setRoomId] = useState("");
@@ -68,8 +68,33 @@ function OnlineMode({
             if (data.role) setOnlineRole(data.role);
             if (data.playerTeam) setPlayerTeam(data.playerTeam);
             if (data.aiTeam) setAiTeam(data.aiTeam);
-            setPlayerDeck(data.playerDeck);
-            setAiDeck(data.aiDeck);
+
+            let pDeck = data.playerDeck;
+            let aDeck = data.aiDeck;
+
+            if (data.gameMode === "tournament") {
+                let deckLimit = 7;
+                try {
+                    const str = localStorage.getItem("savedTournamentState");
+                    const savedTournament = str ? JSON.parse(str) : null;
+                    if (savedTournament && savedTournament.stage === "playoffs" && savedTournament.playoffs) {
+                        const play = savedTournament.playoffs;
+                        const playerTeamLocal = savedTournament.playerTeam;
+                        const isFinalActive = play.final && play.final.home && !play.final.played && (play.final.home === playerTeamLocal || play.final.away === playerTeamLocal);
+                        if (isFinalActive) {
+                            deckLimit = 11;
+                        } else {
+                            deckLimit = 9;
+                        }
+                    }
+                } catch (e) {}
+
+                pDeck = [...pDeck].sort(() => Math.random() - 0.5).slice(0, deckLimit);
+                aDeck = [...aDeck].sort(() => Math.random() - 0.5).slice(0, deckLimit);
+            }
+
+            setPlayerDeck(pDeck);
+            setAiDeck(aDeck);
             setIsOnlineGameStarted(true);
         };
 

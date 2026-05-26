@@ -15,7 +15,11 @@ function GameHeader({
   playStyle,
   isMuted,
   toggleMute,
-  user
+  user,
+  gameMode,
+  pitchCondition,
+  weather,
+  moisture
 }) {
   // logout is available if needed in future; mid-game we route through handleHomeClick
   const { logout } = useAuth(); // eslint-disable-line no-unused-vars
@@ -95,7 +99,32 @@ function GameHeader({
           </div>
         )}
 
+        {/* Tactical Feature Banners */}
+        {(gameMode === "time" || gameMode === "battle") && pitchCondition && (
+          <div className="pitch-banner glass-banner animate-pop" style={{ borderRadius: '50px', padding: '8px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 'bold' }}>
+              <span>Weather: {weather === "sunny" ? "Sunny ☀" : weather === "cloudy" ? "Cloudy 🌧" : weather === "windy" ? "Windy 💨" : "Heavy Dew 🌫"}</span>
+              <span style={{ opacity: 0.3 }}>|</span>
+              <span>Moisture: {moisture}% ({moisture >= 75 ? "Wet" : moisture >= 50 ? "Fresh" : moisture >= 25 ? "Dry" : "Cracked"})</span>
+              <span style={{ opacity: 0.3 }}>|</span>
+              <span>Pitch: {pitchCondition === "green" ? "Fresh Green 🟢" : pitchCondition === "balanced" ? "Balanced 🟡" : pitchCondition === "dry" ? "Dry Surface 🟠" : "Cracked Dusty 🔴"}</span>
+            </div>
+          </div>
+        )}
 
+        {(gameMode === "team" || gameMode === "tournament") && (
+          <div className="phase-banner glass-banner animate-pop">
+            {((round - 1) % 3 === 0) && (
+              <span style={{ color: "#ffd700" }}>⚡ Powerplay: Batting Stats Only</span>
+            )}
+            {((round - 1) % 3 === 1) && (
+              <span style={{ color: "#00aeff" }}>🌀 Middle Overs: Matches & Catches Only</span>
+            )}
+            {((round - 1) % 3 === 2) && (
+              <span style={{ color: "#ff4b2b" }}>💀 Death Overs: Bowling Stats Only</span>
+            )}
+          </div>
+        )}
       </div>
 
     </>
