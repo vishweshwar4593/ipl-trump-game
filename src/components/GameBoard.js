@@ -41,7 +41,9 @@ function GameBoard({
     swapGraceActive,
     swapGraceTimeLeft,
     handleOpenPlayerSwap,
-    executePlayerSwap
+    executePlayerSwap,
+    overAnnouncement,
+    swapTimer
 }) {
 
     // ✅ ADD THIS LINE
@@ -169,11 +171,22 @@ function GameBoard({
                 </div>
             )}
 
+            {/* Over Announcement Toast */}
+            {overAnnouncement && (
+                <div className="over-announcement-toast animate-slide-in">
+                    <div className="toast-icon">🏏</div>
+                    <div className="toast-content">{overAnnouncement}</div>
+                </div>
+            )}
+
             {/* Tactical Swap Fullscreen Overlay Modal */}
             {swapModalOpen && (
                 <div className="swap-modal-overlay">
                     <div className="swap-modal animate-scale-up">
                         <h2>🔄 Tactical Swap</h2>
+                        <div className="swap-timer-badge animate-pulse-glow">
+                            ⏱️ Swap Selection Ends in: <strong>{swapTimer}s</strong>
+                        </div>
                         <p className="swap-subtitle">
                             Select one matchup-scored candidate below to replace your active card. 
                             The other card and your old card will be reshuffled back into your deck.

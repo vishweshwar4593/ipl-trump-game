@@ -234,11 +234,14 @@ export function useGameEngine({
   const [swapCandidates, setSwapCandidates] = useState([]);
   const [swapAnnouncement, setSwapAnnouncement] = useState(null);
   const [swapGraceActive, setSwapGraceActive] = useState(true);
-  const [swapGraceTimeLeft, setSwapGraceTimeLeft] = useState(3);
+  const [swapGraceTimeLeft, setSwapGraceTimeLeft] = useState(1);
   const [gameOver, setGameOver] = useState(false);
   const [pitchCondition, setPitchCondition] = useState(null);
   const [weather, setWeather] = useState(null);
   const [moisture, setMoisture] = useState(null);
+  const [swapTimer, setSwapTimer] = useState(5);
+  const [consecutiveTurns, setConsecutiveTurns] = useState(1);
+  const [overAnnouncement, setOverAnnouncement] = useState(null);
 
   const player = playerDeck[0];
   const ai = aiDeck[0];
@@ -303,7 +306,7 @@ export function useGameEngine({
   useEffect(() => {
     // Reset swap grace on every round increment
     setSwapGraceActive(true);
-    setSwapGraceTimeLeft(3);
+    setSwapGraceTimeLeft(1);
   }, [round]);
 
   useEffect(() => {
@@ -336,6 +339,7 @@ export function useGameEngine({
       setAiHP(resumedGameState.aiHP);
       setPlayerSwapUsed(resumedGameState.playerSwapUsed ?? false);
       setAiSwapUsed(resumedGameState.aiSwapUsed ?? false);
+      setConsecutiveTurns(resumedGameState.consecutiveTurns ?? 1);
       setSelectedStat(null);
       setWinner(null);
       setDrawPile([]);
@@ -394,6 +398,7 @@ export function useGameEngine({
     setSelectedStat(null);
     setWinner(null);
     setDrawPile([]);
+    setConsecutiveTurns(1);
   // onlineRole intentionally removed — no longer used in this effect.
   }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle]);
 
@@ -430,13 +435,14 @@ export function useGameEngine({
         playerHP,
         aiHP,
         playerSwapUsed,
-        aiSwapUsed
+        aiSwapUsed,
+        consecutiveTurns
       };
       localStorage.setItem("savedGameState", JSON.stringify(saveData));
     }, 400); // debounce — only write once the state has settled
 
     return () => clearTimeout(timer);
-  }, [playerDeck, aiDeck, turn, round, playerHP, aiHP, gameMode, isBattleMode, isMultiplayerMode, playerTeam, aiTeam, gameOver, selectedStat, playStyle, playerSwapUsed, aiSwapUsed]);
+  }, [playerDeck, aiDeck, turn, round, playerHP, aiHP, gameMode, isBattleMode, isMultiplayerMode, playerTeam, aiTeam, gameOver, selectedStat, playStyle, playerSwapUsed, aiSwapUsed, consecutiveTurns]);
 
   const getBestStat = useCallback((playerObj) => {
     if (!playerObj) return "runs";
@@ -535,6 +541,7 @@ const handleTurnTimeout = useCallback(() => {
         });
         setDrawPile([]);
         setTurn("ai");
+        setConsecutiveTurns(1);
         setSelectedStat(null);
         setWinner(null);
         setAnimate(false);
@@ -561,6 +568,7 @@ const handleTurnTimeout = useCallback(() => {
         });
         setDrawPile([]);
         setTurn("player");
+        setConsecutiveTurns(1);
         setSelectedStat(null);
         setWinner(null);
         setAnimate(false);
@@ -587,6 +595,7 @@ const handleTurnTimeout = useCallback(() => {
         });
         setDrawPile([]);
         setTurn("player");
+        setConsecutiveTurns(1);
         setSelectedStat(null);
         setWinner(null);
         setAnimate(false);
@@ -715,11 +724,35 @@ const handleTurnTimeout = useCallback(() => {
 
       // The winner gets the next turn.
       // Each client stores THEMSELVES as "player", so result="player" always means local user won.
-      if (result === "player") setTurn("player");
-      else if (result === "ai") setTurn("ai");
-      // draw: turn stays unchanged
+      let nominalNextTurn = turn; // default for draw
+      if (result === "player") nominalNextTurn = "player";
+      else if (result === "ai") nominalNextTurn = "ai";
+
+      if (nominalNextTurn === turn) {
+        // Active player kept the turn. If consecutiveTurns is at 3, force shift the turn (Cricket "Over" Completed!)
+        if (consecutiveTurns >= 3) {
+          const shiftedTurn = turn === "player" ? "ai" : "player";
+          setTurn(shiftedTurn);
+          setConsecutiveTurns(1);
+
+          const overMsg = isMultiplayerMode
+            ? `🏏 Over Completed! Turn shifts to ${shiftedTurn === "player" ? "Player 1" : "Player 2"}`
+            : playStyle === "online"
+              ? `🏏 Over Completed! Turn shifts to ${shiftedTurn === "player" ? "You" : "Opponent"}`
+              : `🏏 Over Completed! Turn shifts to ${shiftedTurn === "player" ? "You" : "AI"}`;
+          setOverAnnouncement(overMsg);
+          setTimeout(() => setOverAnnouncement(null), 4000);
+        } else {
+          setTurn(nominalNextTurn);
+          setConsecutiveTurns(prev => prev + 1);
+        }
+      } else {
+        // Turn naturally shifted to opponent
+        setTurn(nominalNextTurn);
+        setConsecutiveTurns(1);
+      }
     }, 2000);
-  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture]);
+  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode]);
   // ✅ FIX 3: drawPile removed from deps — now read via drawPileRef to prevent stale closure
 
   // ✅ FIX 2: Keep a stable ref to the latest handleStatClick so the socket listener
@@ -896,7 +929,7 @@ const handleTurnTimeout = useCallback(() => {
 
   // Hook C: Turn timeout countdown timer execution
   useEffect(() => {
-    const shouldRunTimeout = selectedStat === null && !gameOver && !!turn;
+    const shouldRunTimeout = selectedStat === null && !gameOver && !!turn && !swapModalOpen;
 
     if (shouldRunTimeout) {
       const timeout = setTimeout(() => {
@@ -904,7 +937,27 @@ const handleTurnTimeout = useCallback(() => {
       }, TURN_TIMEOUT);
       return () => clearTimeout(timeout);
     }
-  }, [selectedStat, gameOver, turn, TURN_TIMEOUT]);
+  }, [selectedStat, gameOver, turn, TURN_TIMEOUT, swapModalOpen]);
+
+  // Hook D: 5-Second Tactical Swap Timer Countdown
+  useEffect(() => {
+    if (!swapModalOpen || gameOver) return;
+
+    setSwapTimer(5);
+
+    const interval = setInterval(() => {
+      setSwapTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setSwapModalOpen(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [swapModalOpen, gameOver, setSwapModalOpen]);
 
   return {
     selectedStat, setSelectedStat,
@@ -937,6 +990,9 @@ const handleTurnTimeout = useCallback(() => {
     swapGraceActive, setSwapGraceActive,
     swapGraceTimeLeft, setSwapGraceTimeLeft,
     handleOpenPlayerSwap,
-    executePlayerSwap
+    executePlayerSwap,
+    consecutiveTurns, setConsecutiveTurns,
+    overAnnouncement, setOverAnnouncement,
+    swapTimer, setSwapTimer
   };
 }

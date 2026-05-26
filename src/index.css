@@ -2638,6 +2638,26 @@ body {
   text-shadow: 0 0 15px rgba(255, 215, 0, 0.35);
 }
 
+.swap-timer-badge {
+  display: inline-block;
+  margin: 0 auto 18px auto;
+  padding: 6px 16px;
+  background: rgba(255, 130, 42, 0.08);
+  border: 1px solid rgba(255, 130, 42, 0.35);
+  border-radius: 50px;
+  color: #ff983f;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(255, 130, 42, 0.15);
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.swap-timer-badge strong {
+  color: #ff3c3c;
+  text-shadow: 0 0 8px rgba(255, 60, 60, 0.4);
+}
+
 .swap-subtitle {
   color: #aaa;
   font-size: 14px;
@@ -2770,6 +2790,24 @@ body {
   gap: 12px;
   z-index: 10001;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(57, 255, 136, 0.2);
+  color: #fff;
+  max-width: 360px;
+}
+
+.over-announcement-toast {
+  position: fixed;
+  top: 90px;
+  right: 20px;
+  background: rgba(10, 25, 15, 0.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(57, 255, 136, 0.55);
+  border-radius: 16px;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10002;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(57, 255, 136, 0.35);
   color: #fff;
   max-width: 360px;
 }

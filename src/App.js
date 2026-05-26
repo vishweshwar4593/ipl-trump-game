@@ -126,7 +126,9 @@ function App() {
     swapGraceActive,
     swapGraceTimeLeft,
     handleOpenPlayerSwap,
-    executePlayerSwap
+    executePlayerSwap,
+    overAnnouncement,
+    swapTimer
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
     playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole
@@ -695,7 +697,7 @@ function App() {
             selectedStat={selectedStat}
             handleStatClick={handleStatClick}
             getMoveStyle={getMoveStyle}
-            isTimeoutActive={selectedStat === null && !gameOver && !animate}
+            isTimeoutActive={selectedStat === null && !gameOver && !animate && !swapModalOpen}
             playStyle={playStyle}
             turnTimeout={TURN_TIMEOUT}
             pitchCondition={pitchCondition}
@@ -711,6 +713,8 @@ function App() {
             swapGraceTimeLeft={swapGraceTimeLeft}
             handleOpenPlayerSwap={handleOpenPlayerSwap}
             executePlayerSwap={executePlayerSwap}
+            overAnnouncement={overAnnouncement}
+            swapTimer={swapTimer}
           />
         ) : (
           <div className="loading">Checking winner...</div>
