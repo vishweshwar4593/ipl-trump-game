@@ -17,6 +17,8 @@ import { useGameAudio } from "./hooks/useGameAudio";
 import { useGameEngine } from "./hooks/useGameEngine";
 import { useAuth } from "./context/AuthContext";
 import TournamentMode from "./modes/TournamentMode";
+import { ref, get, set, remove } from "firebase/database";
+import { database } from "./firebase";
 
 
 export const STAT_WEIGHTS = {
@@ -51,6 +53,8 @@ function App() {
     setAiTeam(null);
     setResumedGameState(null);
     setOnlineRole(null);
+    setSavedGameState(null);
+    setTournamentState(null);
     localStorage.removeItem("savedGameState");
   };
 
@@ -85,6 +89,56 @@ function App() {
       };
     }
   }, [user, logout]);
+
+  const [savedGameState, setSavedGameState] = useState(null);
+
+  // Asynchronously fetch cloud saves from Firebase Realtime Database on user login
+  useEffect(() => {
+    if (!user) {
+      setSavedGameState(null);
+      setTournamentState(null);
+      return;
+    }
+
+    const fetchCloudData = async () => {
+      try {
+        const gameRef = ref(database, `users/${user.uid}/savedGameState`);
+        const gameSnap = await get(gameRef);
+        if (gameSnap.exists()) {
+          setSavedGameState(gameSnap.val());
+        } else {
+          setSavedGameState(null);
+        }
+
+        const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
+        const tourSnap = await get(tourRef);
+        if (tourSnap.exists()) {
+          setTournamentState(tourSnap.val());
+        } else {
+          setTournamentState(null);
+        }
+      } catch (err) {
+        console.error("Error loading data from Firebase Realtime Database:", err);
+      }
+    };
+
+    fetchCloudData();
+  }, [user]);
+
+  // Load from LocalStorage fallback if player plays as a guest
+  useEffect(() => {
+    if (isGuest) {
+      try {
+        const gameStr = localStorage.getItem("savedGameState");
+        setSavedGameState(gameStr ? JSON.parse(gameStr) : null);
+
+        const tourStr = localStorage.getItem("savedTournamentState");
+        setTournamentState(tourStr ? JSON.parse(tourStr) : null);
+      } catch (err) {
+        console.error("Error loading LocalStorage fallback for guest:", err);
+      }
+    }
+  }, [isGuest]);
 
   const [gameMode, setGameMode] = useState(null);
   const [playStyle, setPlayStyle] = useState(null);
@@ -131,7 +185,8 @@ function App() {
     swapTimer
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
-    playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole
+    playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole,
+    user, isGuest
   });
 
   const playerRef = useRef(null);
@@ -215,7 +270,13 @@ function App() {
     setAiTeam(null);
     setResumedGameState(null);
     setOnlineRole(null);
-    localStorage.removeItem("savedGameState");
+    setSavedGameState(null);
+    if (user && !isGuest) {
+      const gameRef = ref(database, `users/${user.uid}/savedGameState`);
+      remove(gameRef).catch(err => console.error("Error clearing cloud save:", err));
+    } else {
+      localStorage.removeItem("savedGameState");
+    }
   };
   const cancelGoHome = () => setShowConfirm(false);
 
@@ -429,18 +490,35 @@ function App() {
     }
 
     setTournamentState(state);
-    localStorage.setItem("savedTournamentState", JSON.stringify(state));
+    if (user && !isGuest) {
+      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
+      set(tourRef, state).catch(err => console.error("Error saving tournament to cloud:", err));
+    } else {
+      localStorage.setItem("savedTournamentState", JSON.stringify(state));
+    }
 
     // Reset game match variables
     setPlayerTeam(null);
     setAiTeam(null);
     setIsOnlineGameStarted(false);
     setResumedGameState(null);
-    localStorage.removeItem("savedGameState"); // Clear single game save since this match is done
+    setSavedGameState(null);
+    if (user && !isGuest) {
+      const gameRef = ref(database, `users/${user.uid}/savedGameState`);
+      remove(gameRef).catch(err => console.error("Error clearing cloud game save:", err));
+    } else {
+      localStorage.removeItem("savedGameState"); // Clear single game save since this match is done
+    }
   };
 
   const clearSaveAndGoHome = () => {
-    localStorage.removeItem("savedGameState");
+    setSavedGameState(null);
+    if (user && !isGuest) {
+      const gameRef = ref(database, `users/${user.uid}/savedGameState`);
+      remove(gameRef).catch(err => console.error("Error clearing cloud save:", err));
+    } else {
+      localStorage.removeItem("savedGameState");
+    }
     setResumedGameState(null);
     setGameMode(null);
     setPlayStyle(null);
@@ -498,6 +576,7 @@ function App() {
         user={user}
         isGuest={isGuest}
         onSignOut={handleSignOut}
+        savedGameState={savedGameState}
       />
     );
   }

@@ -1,4 +1,5 @@
 import { useAuth } from "../context/AuthContext";
+import { getRoundStage } from "../hooks/useGameEngine";
 
 function GameHeader({
   round,
@@ -114,13 +115,13 @@ function GameHeader({
 
         {(gameMode === "team" || gameMode === "tournament") && (
           <div className="phase-banner glass-banner animate-pop">
-            {((round - 1) % 3 === 0) && (
+            {(getRoundStage(round) === "powerplay") && (
               <span style={{ color: "#ffd700" }}>⚡ Powerplay: Batting Stats Only</span>
             )}
-            {((round - 1) % 3 === 1) && (
+            {(getRoundStage(round) === "middle") && (
               <span style={{ color: "#00aeff" }}>🌀 Middle Overs: Matches & Catches Only</span>
             )}
-            {((round - 1) % 3 === 2) && (
+            {(getRoundStage(round) === "death") && (
               <span style={{ color: "#ff4b2b" }}>💀 Death Overs: Bowling Stats Only</span>
             )}
           </div>

@@ -13,7 +13,8 @@ function HomeScreen({
     setPlayStyle,
     user,
     isGuest,
-    onSignOut
+    onSignOut,
+    savedGameState
 }) {
     const [selectedBaseMode, setSelectedBaseMode] = useState(null);
     const [showProfile, setShowProfile] = useState(false);
@@ -23,16 +24,6 @@ function HomeScreen({
         setGameMode(selectedBaseMode);
         setSelectedBaseMode(null);
     };
-
-    // ✅ FIX: parse once on mount — not on every render (e.g. profile dropdown toggle)
-    const [savedState] = useState(() => {
-        try {
-            const str = localStorage.getItem("savedGameState");
-            return str ? JSON.parse(str) : null;
-        } catch {
-            return null;
-        }
-    });
 
     // Derive display name
     const displayName = user?.displayName || (isGuest ? "Guest" : "Player");
@@ -139,10 +130,10 @@ function HomeScreen({
             <div className="home-main">
                 <h1 className="home-title">🏏 IPL TRUMP CARDS</h1>
 
-                {savedState && (
+                {savedGameState && (
                     <button
                         className="home-btn"
-                        onClick={() => onResumeGame(savedState)}
+                        onClick={() => onResumeGame(savedGameState)}
                         style={{ margin: '0 auto 30px auto', display: 'block', backgroundColor: '#FFD700', color: '#111', fontWeight: 'bold' }}
                     >
                         ▶️ Resume Saved Game

@@ -1,6 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import socket from "../socket";
 import { STAT_WEIGHTS } from "../App";
+import { ref, set } from "firebase/database";
+import { database } from "../firebase";
+
+export function getRoundStage(round) {
+  // Deterministic pseudo-random stage based on round number
+  const x = Math.sin(round * 724.3) * 10000;
+  const rand = x - Math.floor(x);
+  if (rand < 0.33) return "powerplay";
+  if (rand < 0.66) return "middle";
+  return "death";
+}
 
 const LOWER_BETTER = ["economy", "bowlingAvg", "bowlingSR"];
 const battingStats = ["runs", "matches", "hs", "battingAvg", "battingSR", "hundreds", "fifties", "catches"];
@@ -131,10 +142,10 @@ const getClutchReplacementsScore = (card, gameMode, round, pitchCondition, weath
   const runs = card.runs ?? 0;
   const wickets = card.wickets ?? 0;
 
-  const mod = (round - 1) % 3;
-  const isPowerplay = mod === 0;
-  const isMiddleOvers = mod === 1;
-  const isDeathOvers = mod === 2;
+  const stage = getRoundStage(round);
+  const isPowerplay = stage === "powerplay";
+  const isMiddleOvers = stage === "middle";
+  const isDeathOvers = stage === "death";
 
   if (isPowerplay && role === "batsman") score += 100;
   if (isDeathOvers && role === "pace") score += 100;
@@ -174,9 +185,9 @@ const shouldAISwap = (aiCard, roundNumber, pitchCondition, weather, moisture, ai
   const isSpinner = role === "spinner";
   const isBatsman = role === "batsman";
   
-  const mod = (roundNumber - 1) % 3;
-  const isPowerplay = mod === 0;
-  const isDeathOvers = mod === 2;
+  const stage = getRoundStage(roundNumber);
+  const isPowerplay = stage === "powerplay";
+  const isDeathOvers = stage === "death";
 
   if (isDeathOvers && isBatsman) return true;
   if (isPowerplay && (isSpinner || isPace)) return true;
@@ -213,7 +224,9 @@ export function useGameEngine({
   TURN_TIMEOUT = 12000,
   players,
   resumedGameState,
-  onlineRole
+  onlineRole,
+  user,
+  isGuest
 }) {
   const [selectedStat, setSelectedStat] = useState(null);
   const [winner, setWinner] = useState(null);
@@ -438,11 +451,17 @@ export function useGameEngine({
         aiSwapUsed,
         consecutiveTurns
       };
-      localStorage.setItem("savedGameState", JSON.stringify(saveData));
+
+      if (!user || isGuest) {
+        localStorage.setItem("savedGameState", JSON.stringify(saveData));
+      } else {
+        const gameRef = ref(database, `users/${user.uid}/savedGameState`);
+        set(gameRef, saveData).catch(err => console.error("Error auto-saving to cloud:", err));
+      }
     }, 400); // debounce — only write once the state has settled
 
     return () => clearTimeout(timer);
-  }, [playerDeck, aiDeck, turn, round, playerHP, aiHP, gameMode, isBattleMode, isMultiplayerMode, playerTeam, aiTeam, gameOver, selectedStat, playStyle, playerSwapUsed, aiSwapUsed, consecutiveTurns]);
+  }, [playerDeck, aiDeck, turn, round, playerHP, aiHP, gameMode, isBattleMode, isMultiplayerMode, playerTeam, aiTeam, gameOver, selectedStat, playStyle, playerSwapUsed, aiSwapUsed, consecutiveTurns, user, isGuest]);
 
   const getBestStat = useCallback((playerObj) => {
     if (!playerObj) return "runs";
@@ -460,10 +479,10 @@ export function useGameEngine({
 
     let statsPool;
     if (gameMode === "team" || gameMode === "tournament") {
-      const mod = (round - 1) % 3;
-      if (mod === 0) {
+      const stage = getRoundStage(round);
+      if (stage === "powerplay") {
         statsPool = ["runs", "hs", "battingAvg", "battingSR", "hundreds", "fifties"];
-      } else if (mod === 1) {
+      } else if (stage === "middle") {
         statsPool = ["matches", "catches"];
       } else {
         statsPool = ["wickets", "economy", "bowlingAvg", "bowlingSR"];

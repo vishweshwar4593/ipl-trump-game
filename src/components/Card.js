@@ -1,7 +1,7 @@
 import React, { forwardRef } from "react";
 import teamLogos from "../data/teamLogos";
 import back from "../assets/back.png";
-import { getModifiedStat } from "../hooks/useGameEngine";
+import { getModifiedStat, getRoundStage } from "../hooks/useGameEngine";
 
 // ✅ FIX: neutral cricket ball SVG used as fallback instead of silently
 // showing another team's (CSK) logo for unrecognised team names
@@ -38,10 +38,10 @@ const teamGlowColors = {
 
 const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, animate, turn, showCard, move, style, isMultiplayerMode, turnTimerKey, showTimeoutGlow, gameMode, playStyle, turnTimeout = 20000, pitchCondition, round, weather, moisture, swapGraceActive }, ref) => {
 
-  const mod = (round - 1) % 3;
-  const isPowerplay = mod === 0;
-  const isMiddleOvers = mod === 1;
-  const isDeathOvers = mod === 2;
+  const stage = getRoundStage(round);
+  const isPowerplay = stage === "powerplay";
+  const isMiddleOvers = stage === "middle";
+  const isDeathOvers = stage === "death";
 
   const isStatEligible = (key) => {
     if (gameMode !== "team" && gameMode !== "tournament") return true;
