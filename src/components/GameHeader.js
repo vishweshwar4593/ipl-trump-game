@@ -36,30 +36,7 @@ function GameHeader({
         {isMuted ? "🔇" : "🔊"}
       </button>
 
-      {/* User avatar chip */}
-      {user ? (
-        <div className="user-chip" title={`Signed in as ${user.displayName}`}>
-          <img
-            src={user.photoURL || "https://ui-avatars.com/api/?name=" + encodeURIComponent(user.displayName || "User") + "&background=ffd700&color=000"}
-            alt="avatar"
-            className="user-avatar"
-          />
-          <span className="user-name">{user.displayName?.split(" ")[0]}</span>
-          {/* ✅ FIX: Routes through handleHomeClick (shows confirm modal) instead of
-              calling logout() directly — prevents instant mid-game sign-out/game loss */}
-          <button
-            className="user-logout-btn"
-            onClick={handleHomeClick}
-            title="Go to home (asks for confirmation)"
-          >
-            ⏏
-          </button>
-        </div>
-      ) : (
-        <div className="user-chip guest-chip">
-          <span>👤 Guest</span>
-        </div>
-      )}
+
 
       <div className="scoreboard">
         <h2>Round: {round}</h2>

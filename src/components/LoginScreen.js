@@ -72,6 +72,8 @@ function LoginScreen({ onContinueAsGuest }) {
 
     return (
         <div className="login-screen">
+            <div className="decorative-glow g1"></div>
+            <div className="decorative-glow g2"></div>
             <div className="login-container">
                 {/* Logo */}
                 <div className="login-logo">🏏</div>
