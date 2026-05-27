@@ -36,7 +36,7 @@ graph TD
 *   **Frontend Core**: React 19, initialized via Create React App.
 *   **Backend Server**: Node.js & Express serving as a custom game state synchronization and socket gateway.
 *   **Real-time Protocol**: Socket.IO (version 4.x) utilizing WebSockets (forced under production/Render config) and polling fallback in development.
-*   **Database & Authentication**: Firebase integration with custom session registration.
+*   **Database & Authentication**: Firebase Authentication combined with **Firebase Realtime Database** for seamless cross-device cloud saving, loading, and campaign synchronization.
 *   **Visual Styling**: Highly advanced Vanilla CSS (`index.css`) featuring custom dark modes, glowing filters, layout glassmorphism, responsive grid flex-boxes, and timeout countdown animations.
 
 ---
@@ -90,11 +90,17 @@ The game engine (`useGameEngine.js`) coordinates 4 distinct modes, operating und
 | **Time Mode** | Score maximum card wins | Timed match (e.g. 120s) where decisions must be made before timer expiry. Turn time counts down. |
 | **Battle Mode** | Reduce opponent HP to 0 | Win stats to inflict damage to enemy HP. HP is computed from margins scaled by `STAT_WEIGHTS`. |
 | **Team Mode** | Last franchise standing wins | Restricts play to chosen franchise team decks. Cards captured are kept in the original team pool. |
+| **Tournament Mode** | Complete a 9-round season campaign | Play league and playoff matches. Deck sizes dynamically expand based on stakes (7 cards in league, 9 in playoffs, 11 in Grand Final). |
 
 ### Play Styles:
 1.  **Play vs AI 🤖**: An intelligent computer opponent. The AI dynamically determines its card type (batsman, bowler, all-rounder) and calculates mathematically optimized stats to play using a custom logarithmic model with randomized weights.
 2.  **Local Multiplayer 🎮**: Hot-seat multiplayer on a single device. Turns are fully isolated—the inactive player's card remains turned over until selection.
 3.  **Play Online 🌐**: Real-time room creation, custom match codes, and team draft screens powered by Socket.IO.
+
+### Custom Advanced Gameplay Mechanics:
+*   **Cricket "Over" Turn Rotation**: To prevent one-sided games, the game tracks active turn control streaks. If a player maintains the turn for **3 consecutive rounds** (one "Over"), the turn automatically rotates to the opponent, keeping the match balanced and engaging.
+*   **Unpredictable, Randomized Round Stages**: In Tournament and Team modes, the active round stage (**Powerplay**, **Middle Overs**, or **Death Overs**) is randomly assigned at the start of each round rather than alternating in a predictable order.
+*   **Zero-Cost Deterministic Random Sync**: In online multiplayer, round stage randomization is calculated using a high-frequency sine function of the current round number. Since both clients execute identical math on the identical round, they calculate the exact same active stage, achieving **100% serverless synchronization** with zero lag!
 
 ---
 
@@ -107,3 +113,5 @@ Your code includes several key optimizations and security mechanisms:
 *   **Socket Multi-Emitter Cleanup**: All event listeners in `OnlineMode.js` and `useGameEngine.js` explicitly clean up specific named references to avoid duplicate event execution on reconnect.
 *   **Stale-Closure Prevention**: `useGameEngine` keeps state references inside stable `useRef` instances (like `drawPileRef` and `handleStatClickRef`) to prevent asynchronous callbacks from executing against old React renders.
 *   **Timeout & Visual Micro-Animations**: Card timeout indicators are drawn dynamically using SVG rect progress animations synchronized directly with turn remounts, providing highly premium feedback.
+*   **Cross-Device Cloud Syncing**: Standard game progress and active tournament campaigns are automatically synchronized to Firebase Realtime Database. Data is isolated using unique authenticated user ID prefixes (`users/${user.uid}/...`), allowing players to seamlessly transition from phone to laptop. Unauthenticated guest players fall back safely to browser-level LocalStorage.
+*   **Tactical Swap Timer Pausing**: Clicking the "Tactical Swap" button completely pauses the main round turn countdown and unmounts the visual glowing progress card border. A separate **5-second warning countdown** badge renders inside the swap modal. If no candidate is selected within 5 seconds, the modal automatically closes and the main turn timer resumes.

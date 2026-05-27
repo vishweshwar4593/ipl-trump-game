@@ -1,8 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import socket from "../socket";
 import { STAT_WEIGHTS } from "../App";
-import { ref, set } from "firebase/database";
-import { database } from "../firebase";
 
 export function getRoundStage(round) {
   // Deterministic pseudo-random stage based on round number
@@ -427,41 +425,7 @@ export function useGameEngine({
     setTurn(tossWinner);
   }, [playStyle, playerDeck, aiDeck, turn, onlineRole]);
 
-  // ✅ FIX 5: Auto-Save Logic — debounced 400ms to avoid blocking main thread during animations.
-  // Also saves playStyle so resume correctly restores local/multiplayer games.
-  useEffect(() => {
-    if (!gameMode || playStyle === "online" || gameOver || selectedStat !== null) return;
-    if (playerDeck.length === 0 || aiDeck.length === 0) return;
-
-    const timer = setTimeout(() => {
-      const saveData = {
-        gameMode,
-        playStyle,          // ✅ FIX 4: was missing — resume was always defaulting to "ai"
-        isBattleMode,
-        isMultiplayerMode,
-        playerTeam,
-        aiTeam,
-        playerDeck,
-        aiDeck,
-        turn,
-        round,
-        playerHP,
-        aiHP,
-        playerSwapUsed,
-        aiSwapUsed,
-        consecutiveTurns
-      };
-
-      if (!user || isGuest) {
-        localStorage.setItem("savedGameState", JSON.stringify(saveData));
-      } else {
-        const gameRef = ref(database, `users/${user.uid}/savedGameState`);
-        set(gameRef, saveData).catch(err => console.error("Error auto-saving to cloud:", err));
-      }
-    }, 400); // debounce — only write once the state has settled
-
-    return () => clearTimeout(timer);
-  }, [playerDeck, aiDeck, turn, round, playerHP, aiHP, gameMode, isBattleMode, isMultiplayerMode, playerTeam, aiTeam, gameOver, selectedStat, playStyle, playerSwapUsed, aiSwapUsed, consecutiveTurns, user, isGuest]);
+  // Note: Auto-save logic has been removed to ensure standard matches are lost permanently when closing, refreshing, or going home. Tournament campaign saves remain preserved in their separate flow.
 
   const getBestStat = useCallback((playerObj) => {
     if (!playerObj) return "runs";

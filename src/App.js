@@ -105,10 +105,10 @@ function App() {
         const gameRef = ref(database, `users/${user.uid}/savedGameState`);
         const gameSnap = await get(gameRef);
         if (gameSnap.exists()) {
-          setSavedGameState(gameSnap.val());
-        } else {
-          setSavedGameState(null);
+          // Stale mid-game saves are cleared to avoid resume options
+          remove(gameRef).catch(err => console.error("Error clearing cloud save:", err));
         }
+        setSavedGameState(null);
 
         const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
         const tourSnap = await get(tourRef);
@@ -129,8 +129,8 @@ function App() {
   useEffect(() => {
     if (isGuest) {
       try {
-        const gameStr = localStorage.getItem("savedGameState");
-        setSavedGameState(gameStr ? JSON.parse(gameStr) : null);
+        localStorage.removeItem("savedGameState");
+        setSavedGameState(null);
 
         const tourStr = localStorage.getItem("savedTournamentState");
         setTournamentState(tourStr ? JSON.parse(tourStr) : null);
