@@ -410,6 +410,13 @@ export function useGameEngine({
     setWinner(null);
     setDrawPile([]);
     setConsecutiveTurns(1);
+    setPlayerSwapUsed(false);
+    setAiSwapUsed(false);
+    setSwapModalOpen(false);
+    setSwapCandidates([]);
+    setSwapAnnouncement(null);
+    setGameOver(false);
+    setOverAnnouncement(null);
   // onlineRole intentionally removed — no longer used in this effect.
   }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle]);
 
