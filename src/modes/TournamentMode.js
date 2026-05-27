@@ -33,6 +33,7 @@ function TournamentMode({
   startMatch // App.js trigger: startMatch(opponentTeam, isOnline)
 }) {
   const [activeTab, setActiveTab] = useState("table");
+  const [resetContext, setResetContext] = useState(null); // null | "active_reset" | "new_campaign"
 
   // Load state on mount if it exists, otherwise trigger franchise selection
   const selectFranchise = (team) => {
@@ -59,11 +60,18 @@ function TournamentMode({
     localStorage.setItem("savedTournamentState", JSON.stringify(newState));
   };
 
-  const handleReset = () => {
-    if (window.confirm("Are you sure you want to reset this campaign? All progress will be lost.")) {
-      setTournamentState(null);
-      localStorage.removeItem("savedTournamentState");
-    }
+  const handleResetActive = () => {
+    setResetContext("active_reset");
+  };
+
+  const handleResetNew = () => {
+    setResetContext("new_campaign");
+  };
+
+  const confirmReset = () => {
+    setTournamentState(null);
+    localStorage.removeItem("savedTournamentState");
+    setResetContext(null);
   };
 
   // If no team is selected, show franchise selector
@@ -160,6 +168,45 @@ function TournamentMode({
 
   return (
     <div className="home" style={{ overflowY: "auto", padding: "20px 10px" }}>
+      {resetContext !== null && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div style={{ fontSize: "52px", marginBottom: "12px" }}>
+              {resetContext === "new_campaign" ? "🏏" : "🚨"}
+            </div>
+            <h2>{resetContext === "new_campaign" ? "Start New Campaign?" : "Reset Active Campaign?"}</h2>
+            <p style={{ color: "#ccc", marginBottom: "24px", fontSize: "15px", lineHeight: "1.5" }}>
+              {resetContext === "new_campaign" 
+                ? "Are you ready to start a fresh new season? Your previous tournament standings and stats will be cleared, and you will return to the franchise selection menu."
+                : "Are you sure you want to reset your active campaign? All your current standings, playoff schedule, and match progress will be permanently lost."}
+            </p>
+            <div className="modal-actions" style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
+              <button 
+                className="confirm-btn" 
+                style={{ 
+                  background: resetContext === "new_campaign" ? "linear-gradient(135deg, #ffd700, #ff8c00)" : "linear-gradient(135deg, #ff4b2b, #ff416c)", 
+                  border: "none", 
+                  color: resetContext === "new_campaign" ? "#04050d" : "#fff", 
+                  padding: "12px 24px", 
+                  borderRadius: "10px", 
+                  fontWeight: "bold", 
+                  cursor: "pointer" 
+                }}
+                onClick={confirmReset}
+              >
+                {resetContext === "new_campaign" ? "Yes, Start New" : "Yes, Reset"}
+              </button>
+              <button 
+                className="cancel-btn" 
+                style={{ padding: "12px 24px", borderRadius: "10px", fontWeight: "bold", cursor: "pointer" }}
+                onClick={() => setResetContext(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="home-container" style={{ maxWidth: 900, background: "rgba(10,10,25,0.85)", padding: "30px", borderRadius: "20px", border: "1px solid rgba(255,255,255,0.08)" }}>
         
         {/* Banner Headers */}
@@ -192,7 +239,7 @@ function TournamentMode({
             <p style={{ fontSize: "18px", color: "#fff", maxWidth: "600px", margin: "0 auto 30px auto", lineHeight: "1.6" }}>
               Congratulations! You led **{playerTeam}** to victory in the Grand Final and claimed the coveted IPL Trophy! Your name is etched in glory!
             </p>
-            <button className="play-btn" style={{ minWidth: "220px", padding: "16px" }} onClick={handleReset}>
+            <button className="play-btn" style={{ minWidth: "220px", padding: "16px" }} onClick={handleResetNew}>
               Play Another Season
             </button>
           </div>
@@ -204,7 +251,7 @@ function TournamentMode({
               Your franchise finished outside the Top 4 or was knocked out during the Playoffs. Keep refining your strategy and try again next season!
             </p>
             <div style={{ display: "flex", gap: "15px", justifyContent: "center" }}>
-              <button className="play-btn" style={{ minWidth: "180px" }} onClick={handleReset}>
+              <button className="play-btn" style={{ minWidth: "180px" }} onClick={handleResetNew}>
                 New Campaign
               </button>
               <button className="rules-btn" style={{ minWidth: "180px" }} onClick={() => setGameMode(null)}>
@@ -504,7 +551,7 @@ function TournamentMode({
           <button 
             className="rules-btn" 
             style={{ border: "1px solid rgba(255,75,75,0.4)", color: "#ff4d4d", minWidth: "140px" }}
-            onClick={handleReset}
+            onClick={handleResetActive}
           >
             🚨 Reset Campaign
           </button>
