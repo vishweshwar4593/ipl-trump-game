@@ -90,6 +90,8 @@ function App() {
     }
   }, [user, logout]);
 
+
+
   const [savedGameState, setSavedGameState] = useState(null);
 
   // Asynchronously fetch cloud saves from Firebase Realtime Database on user login
@@ -186,7 +188,7 @@ function App() {
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
     playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole,
-    user, isGuest
+    user, isGuest, showConfirm
   });
 
   const playerRef = useRef(null);
@@ -219,7 +221,7 @@ function App() {
   // for the duration of the game. The boundary check happens inside the setter
   // callback so it always reads the latest value without a stale closure.
   useEffect(() => {
-    if (!isTimeMode || gameOver) return;
+    if (!isTimeMode || gameOver || showConfirm) return;
     const timer = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -230,7 +232,7 @@ function App() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isTimeMode, gameOver, setGameOver]);
+  }, [isTimeMode, gameOver, setGameOver, showConfirm]);
 
   useEffect(() => {
     if (gameMode === "time" && selectedTime) {
@@ -246,6 +248,107 @@ function App() {
     socket.on("playerLeft", onPlayerLeft);
     return () => socket.off("playerLeft", onPlayerLeft); // ✅ remove only this specific handler
   }, [playStyle]);
+
+  // Auto-enter fullscreen and landscape lock ONLY when active gameplay board starts
+  useEffect(() => {
+    // Check if the gameplay screen is active (all lobby selectors and setup configurations are completed)
+    const isGameplayActive = gameMode && 
+      (gameMode !== "time" || selectedTime) && 
+      (gameMode !== "team" || (playerTeam && aiTeam)) && 
+      (playStyle !== "online" || isOnlineGameStarted) &&
+      (gameMode !== "tournament" || aiTeam);
+
+    if (isGameplayActive) {
+      // Only target mobile/tablet viewports
+      if (window.innerWidth <= 1100) {
+        const elem = document.documentElement;
+        if (!document.fullscreenElement) {
+          elem.requestFullscreen().catch(err => {
+            console.log("Active gameplay auto-fullscreen failed:", err);
+          });
+        }
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+          window.screen.orientation.lock("landscape").catch(err => {
+            console.log("Active gameplay orientation lock failed:", err);
+          });
+        }
+      }
+    } else {
+      // Automatically exit fullscreen and restore orientation when returning to menus
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(err => {
+          console.log("Exiting fullscreen failed:", err);
+        });
+      }
+      if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+        try {
+          window.screen.orientation.unlock();
+        } catch (err) {
+          console.log("Orientation unlock failed:", err);
+        }
+      }
+    }
+  }, [gameMode, selectedTime, playerTeam, aiTeam, playStyle, isOnlineGameStarted]);
+
+  // Intercept physical/gesture back button and show confirmation modal during active card gameplay on mobile
+  useEffect(() => {
+    // Check if the gameplay screen is active
+    const isGameplayActive = gameMode && 
+      (gameMode !== "time" || selectedTime) && 
+      (gameMode !== "team" || (playerTeam && aiTeam)) && 
+      (playStyle !== "online" || isOnlineGameStarted) &&
+      (gameMode !== "tournament" || aiTeam);
+
+    if (!isGameplayActive) return;
+
+    // Push dummy state to intercept browser back actions
+    window.history.pushState({ gameplay: true }, "");
+
+    const handlePopState = (event) => {
+      // Re-push the state to prevent navigation
+      window.history.pushState({ gameplay: true }, "");
+      
+      // Trigger the standard confirmation modal
+      setShowConfirm(true);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [gameMode, selectedTime, playerTeam, aiTeam, playStyle, isOnlineGameStarted]);
+
+  // Listen for browser fullscreen exit (including via Android/iOS back key/gesture) to trigger confirmation modal instantly
+  useEffect(() => {
+    // Check if the gameplay screen is active
+    const isGameplayActive = gameMode && 
+      (gameMode !== "time" || selectedTime) && 
+      (gameMode !== "team" || (playerTeam && aiTeam)) && 
+      (playStyle !== "online" || isOnlineGameStarted) &&
+      (gameMode !== "tournament" || aiTeam);
+
+    if (!isGameplayActive) return;
+
+    const handleFullscreenChange = () => {
+      // If the user exited fullscreen while gameplay is still active, show the confirmation warning only on mobile
+      if (window.innerWidth <= 1100 && !document.fullscreenElement) {
+        setShowConfirm(true);
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, [gameMode, selectedTime, playerTeam, aiTeam, playStyle, isOnlineGameStarted]);
 
   const modeRules = {
     classic: { title: "Classic Mode Rules", points: ["Choose one stat from your top player card.", "Your stat is compared with the AI’s top card.", "Higher value wins the round.", "Winner collects both cards and draw pile cards.", "Game ends when one side gets all cards."] },
@@ -278,7 +381,23 @@ function App() {
       localStorage.removeItem("savedGameState");
     }
   };
-  const cancelGoHome = () => setShowConfirm(false);
+  const cancelGoHome = () => {
+    setShowConfirm(false);
+    // Request fullscreen and orientation lock again since they chose to stay in the match
+    if (window.innerWidth <= 1100) {
+      const elem = document.documentElement;
+      if (!document.fullscreenElement) {
+        elem.requestFullscreen().catch(err => {
+          console.log("Re-enabling fullscreen failed:", err);
+        });
+      }
+      if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+        window.screen.orientation.lock("landscape").catch(err => {
+          console.log("Re-locking orientation failed:", err);
+        });
+      }
+    }
+  };
 
   const onResumeGame = (savedState) => {
     setResumedGameState(savedState);

@@ -224,7 +224,8 @@ export function useGameEngine({
   resumedGameState,
   onlineRole,
   user,
-  isGuest
+  isGuest,
+  showConfirm = false
 }) {
   const [selectedStat, setSelectedStat] = useState(null);
   const [winner, setWinner] = useState(null);
@@ -256,6 +257,11 @@ export function useGameEngine({
 
   const player = playerDeck[0];
   const ai = aiDeck[0];
+
+  const showConfirmRef = useRef(showConfirm);
+  useEffect(() => {
+    showConfirmRef.current = showConfirm;
+  }, [showConfirm]);
 
   // ✅ FIX 3: Keep a ref to drawPile so handleStatClick always reads the latest value
   // without needing it in the useCallback dependency array (avoids stale closure).
@@ -324,6 +330,7 @@ export function useGameEngine({
     if (!swapGraceActive) return;
     const interval = setInterval(() => {
       setSwapGraceTimeLeft(prev => {
+        if (showConfirmRef.current) return prev;
         if (prev <= 1) {
           clearInterval(interval);
           setSwapGraceActive(false);
@@ -851,7 +858,8 @@ const handleTurnTimeout = useCallback(() => {
       turn === "ai" &&
       !selectedStat &&
       ai &&
-      !gameOver
+      !gameOver &&
+      !showConfirm
     ) {
       // 1. AI waits for the 5-second swap grace period to finish
       if (swapGraceActive) {
@@ -909,7 +917,8 @@ const handleTurnTimeout = useCallback(() => {
     weather,
     moisture,
     aiSwapUsed,
-    aiDeck
+    aiDeck,
+    showConfirm
   ]);
 
   const handleTurnTimeoutRef = useRef(handleTurnTimeout);
@@ -919,7 +928,7 @@ const handleTurnTimeout = useCallback(() => {
 
   // Hook C: Turn timeout countdown timer execution
   useEffect(() => {
-    const shouldRunTimeout = selectedStat === null && !gameOver && !!turn && !swapModalOpen;
+    const shouldRunTimeout = selectedStat === null && !gameOver && !!turn && !swapModalOpen && !showConfirm;
 
     if (shouldRunTimeout) {
       const timeout = setTimeout(() => {
@@ -927,7 +936,7 @@ const handleTurnTimeout = useCallback(() => {
       }, TURN_TIMEOUT);
       return () => clearTimeout(timeout);
     }
-  }, [selectedStat, gameOver, turn, TURN_TIMEOUT, swapModalOpen]);
+  }, [selectedStat, gameOver, turn, TURN_TIMEOUT, swapModalOpen, showConfirm]);
 
   // Hook D: 5-Second Tactical Swap Timer Countdown
   useEffect(() => {
@@ -937,6 +946,7 @@ const handleTurnTimeout = useCallback(() => {
 
     const interval = setInterval(() => {
       setSwapTimer(prev => {
+        if (showConfirmRef.current) return prev;
         if (prev <= 1) {
           clearInterval(interval);
           setSwapModalOpen(false);

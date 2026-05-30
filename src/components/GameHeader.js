@@ -27,14 +27,44 @@ function GameHeader({
 
   return (
     <>
-      <button className="home-btn" onClick={handleHomeClick} style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 100, width: 'auto', padding: '10px 20px' }}>
-        Home
-      </button>
+      <div className="game-header-actions" style={{ position: 'absolute', top: '10px', left: '10px', right: '10px', display: 'flex', justifyContent: 'space-between', zIndex: 100, pointerEvents: 'none', boxSizing: 'border-box' }}>
+        <button 
+          className="home-btn" 
+          onClick={handleHomeClick} 
+          style={{ pointerEvents: 'auto', width: 'auto', padding: '10px 20px' }}
+        >
+          Home
+        </button>
 
-      {/* Mute button */}
-      <button className="home-btn" onClick={toggleMute} style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 100, width: 'auto', padding: '10px', fontSize: '20px' }}>
-        {isMuted ? "🔇" : "🔊"}
-      </button>
+        <div style={{ display: 'flex', gap: '10px', pointerEvents: 'auto' }}>
+          {/* Fullscreen button */}
+          <button 
+            className="home-btn fullscreen-btn" 
+            onClick={() => {
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                  console.log("Error enabling fullscreen:", err);
+                });
+              } else {
+                document.exitFullscreen();
+              }
+            }} 
+            style={{ width: 'auto', padding: '10px', fontSize: '20px' }}
+            title="Toggle Fullscreen"
+          >
+            📺
+          </button>
+
+          {/* Mute button */}
+          <button 
+            className="home-btn" 
+            onClick={toggleMute} 
+            style={{ width: 'auto', padding: '10px', fontSize: '20px' }}
+          >
+            {isMuted ? "🔇" : "🔊"}
+          </button>
+        </div>
+      </div>
 
 
 
