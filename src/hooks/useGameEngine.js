@@ -225,7 +225,8 @@ export function useGameEngine({
   onlineRole,
   user,
   isGuest,
-  showConfirm = false
+  showConfirm = false,
+  tournamentState
 }) {
   const [selectedStat, setSelectedStat] = useState(null);
   const [winner, setWinner] = useState(null);
@@ -381,12 +382,10 @@ export function useGameEngine({
       setAiDeck(shuffle(aiPlayers));
     } else if (gameMode === "tournament") {
       let deckLimit = 7;
-      try {
-        const str = localStorage.getItem("savedTournamentState");
-        const savedTournament = str ? JSON.parse(str) : null;
-        if (savedTournament && savedTournament.stage === "playoffs" && savedTournament.playoffs) {
-          const play = savedTournament.playoffs;
-          const playerTeamLocal = savedTournament.playerTeam;
+      if (tournamentState && tournamentState.stage === "playoffs" && tournamentState.playoffs) {
+        const play = tournamentState.stage === "playoffs" ? tournamentState.playoffs : null;
+        if (play) {
+          const playerTeamLocal = tournamentState.playerTeam;
           const isFinalActive = play.final && play.final.home && !play.final.played && (play.final.home === playerTeamLocal || play.final.away === playerTeamLocal);
           if (isFinalActive) {
             deckLimit = 11;
@@ -394,7 +393,7 @@ export function useGameEngine({
             deckLimit = 9;
           }
         }
-      } catch (e) {}
+      }
 
       const playerPlayers = players.filter(p => p.team === playerTeam);
       const aiPlayers = players.filter(p => p.team === aiTeam);
@@ -425,7 +424,7 @@ export function useGameEngine({
     setGameOver(false);
     setOverAnnouncement(null);
   // onlineRole intentionally removed — no longer used in this effect.
-  }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle]);
+  }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle, tournamentState]);
 
   // ✅ FIX: Deferred online toss — only runs once both decks have been injected
   // by OnlineMode's "startGame" handler. Previously setTurn fired before

@@ -217,7 +217,7 @@ function App() {
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
     playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole,
-    user, isGuest, showConfirm
+    user, isGuest, showConfirm, tournamentState
   });
 
   const playerRef = useRef(null);
