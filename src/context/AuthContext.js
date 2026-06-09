@@ -3,17 +3,20 @@ import { auth } from "../firebase";
 import {
     signOut,
     onAuthStateChanged,
-    createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
     updateProfile,
     setPersistence,
-    browserSessionPersistence
+    browserSessionPersistence,
+    GoogleAuthProvider,
+    signInWithPopup,
+    sendSignInLinkToEmail,
+    isSignInWithEmailLink,
+    signInWithEmailLink,
+    updatePassword,
+    sendPasswordResetEmail
 } from "firebase/auth";
 
 const AuthContext = createContext(null);
-
-// We store username as "username@ipltrump.app" internally for Firebase
-const toEmail = (username) => `${username.trim().toLowerCase()}@ipltrump.app`;
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(undefined); // undefined = loading, null = not signed in
@@ -32,28 +35,68 @@ export function AuthProvider({ children }) {
             });
     }, []);
 
-    // Sign Up — creates new account, saves displayName as the username
-    const signUpWithUsername = async (username, password) => {
-        const email = toEmail(username);
-        const credential = await createUserWithEmailAndPassword(auth, email, password);
-        // Save the original username as displayName so we can show it in the UI
-        await updateProfile(credential.user, { displayName: username });
-        // ✅ FIX: Do NOT manually call setUser here — creating a plain-object copy
-        // of a Firebase User loses its prototype methods. onAuthStateChanged
-        // will fire automatically and update state correctly.
-        return credential.user;
+    // Login with real Email + Password
+    const signInWithEmail = (email, password) => {
+        return signInWithEmailAndPassword(auth, email, password);
     };
 
-    // Login — signs in using the stored email derived from the username
-    const signInWithUsername = (username, password) => {
-        const email = toEmail(username);
-        return signInWithEmailAndPassword(auth, email, password);
+    // Google Sign-In — signs in using Google provider pop-up
+    const signInWithGoogle = () => {
+        const provider = new GoogleAuthProvider();
+        return signInWithPopup(auth, provider);
+    };
+
+    // Send Verification/Login link to Email
+    const sendValidationLink = (email) => {
+        const actionCodeSettings = {
+            url: window.location.origin, // Redirects back to our home page
+            handleCodeInApp: true
+        };
+        return sendSignInLinkToEmail(auth, email, actionCodeSettings);
+    };
+
+    // Check if the current URL is an email sign-in link
+    const isEmailLink = (href) => {
+        return isSignInWithEmailLink(auth, href);
+    };
+
+    // Complete authentication using email sign-in link
+    const completeEmailLinkSignIn = (email, href) => {
+        return signInWithEmailLink(auth, email, href);
+    };
+
+    // Set or update the password of the currently logged-in user
+    const setPasswordForUser = (newPassword) => {
+        if (!auth.currentUser) return Promise.reject(new Error("No user is logged in."));
+        return updatePassword(auth.currentUser, newPassword);
+    };
+
+    // Update display name (profile nickname)
+    const updateUserProfile = (displayName) => {
+        if (!auth.currentUser) return Promise.reject(new Error("No user is logged in."));
+        return updateProfile(auth.currentUser, { displayName });
+    };
+
+    // Send Password Reset Link to Email
+    const resetPasswordByEmail = (email) => {
+        return sendPasswordResetEmail(auth, email);
     };
 
     const logout = () => signOut(auth);
 
     return (
-        <AuthContext.Provider value={{ user, signUpWithUsername, signInWithUsername, logout }}>
+        <AuthContext.Provider value={{
+            user,
+            signInWithEmail,
+            signInWithGoogle,
+            sendValidationLink,
+            isEmailLink,
+            completeEmailLinkSignIn,
+            setPasswordForUser,
+            updateUserProfile,
+            resetPasswordByEmail,
+            logout
+        }}>
             {children}
         </AuthContext.Provider>
     );

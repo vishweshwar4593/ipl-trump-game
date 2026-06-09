@@ -2127,6 +2127,17 @@ body {
   margin-bottom: 32px;
 }
 
+.auth-step-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffd700;
+  margin: 0 auto 24px auto;
+  text-transform: uppercase;
+  text-align: center;
+  text-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
+}
+
 /* ============================================= */
 /* 🔐 AUTH TOGGLE (Login / Sign Up Tabs)         */
 /* ============================================= */
@@ -2360,6 +2371,80 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Password input relative container and toggle button */
+.password-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.password-input-container .auth-input {
+  padding-right: 48px;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease, transform 0.1s ease;
+  z-index: 5;
+}
+
+.password-toggle-btn:hover {
+  color: #ffd700;
+}
+
+.password-toggle-btn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+/* Google login button */
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 24px;
+  background: #ffffff;
+  color: #1f1f1f;
+  border: 1px solid #dadce0;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+
+.google-btn:hover:not(:disabled) {
+  background: #f8f9fa;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15), 0 0 10px rgba(255, 255, 255, 0.1);
+  border-color: #d2d4d7;
+}
+
+.google-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
+}
+
+.google-icon {
+  flex-shrink: 0;
 }
 
 /* ============================================= */
@@ -3289,21 +3374,21 @@ body {
     font-size: 12px !important;
     margin-bottom: 12px !important;
   }
-  .auth-tabs {
+  .auth-toggle {
     margin-bottom: 15px !important;
   }
   .auth-tab {
     padding: 8px 16px !important;
     font-size: 13px !important;
   }
-  .form-group {
+  .auth-field {
     margin-bottom: 12px !important;
   }
-  .form-group input {
+  .auth-input {
     padding: 10px 14px !important;
     font-size: 13px !important;
   }
-  .submit-btn {
+  .auth-submit-btn {
     padding: 10px 16px !important;
     font-size: 13px !important;
   }
@@ -3311,6 +3396,11 @@ body {
     padding: 8px 16px !important;
     font-size: 12px !important;
     margin-top: 10px !important;
+  }
+  .google-btn {
+    padding: 10px 16px !important;
+    font-size: 13px !important;
+    margin-bottom: 6px !important;
   }
 }
 

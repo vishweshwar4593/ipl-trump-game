@@ -38,9 +38,38 @@ export const STAT_WEIGHTS = {
 
 function App() {
   const { isMuted, toggleMute, playClick, playWin, playLose, playHit } = useGameAudio();
-  const { user, logout } = useAuth();
+  const { user: authUser, logout } = useAuth();
+  const [user, setUser] = useState(undefined);
   const [isGuest, setIsGuest] = useState(false);
   const [loginConflict, setLoginConflict] = useState(false);
+
+  useEffect(() => {
+    if (authUser === undefined) {
+      setUser(undefined);
+      return;
+    }
+    if (authUser === null) {
+      setUser(null);
+      sessionStorage.removeItem("justSignedUp");
+      sessionStorage.removeItem("settingPassword");
+      return;
+    }
+
+    if (sessionStorage.getItem("settingPassword") === "true") {
+      setUser(null);
+      return;
+    }
+
+    if (sessionStorage.getItem("justSignedUp") === "true") {
+      const timer = setTimeout(() => {
+        setUser(authUser);
+        sessionStorage.removeItem("justSignedUp");
+      }, 2500);
+      return () => clearTimeout(timer);
+    } else {
+      setUser(authUser);
+    }
+  }, [authUser]);
 
   const handleSignOut = async () => {
     await logout();
@@ -671,7 +700,10 @@ function App() {
             </div>
           </div>
         )}
-        <LoginScreen onContinueAsGuest={() => setIsGuest(true)} />
+        <LoginScreen 
+          onContinueAsGuest={() => setIsGuest(true)} 
+          onAuthSuccess={(finalUser) => setUser(finalUser)}
+        />
       </>
     );
   }
