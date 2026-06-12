@@ -102,7 +102,7 @@ function GameBoard({
                             onClick={handleOpenPlayerSwap}
                             disabled={
                                 playerSwapUsed || 
-                                playerDeck.length < 3 || 
+                                (gameMode === "tournament" ? playerDeck.length === 0 : playerDeck.length < 3) || 
                                 turn !== "player" || 
                                 selectedStat !== null || 
                                 animate

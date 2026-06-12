@@ -44,7 +44,7 @@ function TournamentMode({
     // Initialize points table
     const initialTable = {};
     teams.forEach(t => {
-      initialTable[t] = { played: 0, won: 0, lost: 0, points: 0 };
+      initialTable[t] = { played: 0, won: 0, lost: 0, points: 0, ncd: 0 };
     });
 
     const newState = {
@@ -147,6 +147,9 @@ function TournamentMode({
     }))
     .sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
+      const aNCD = a.ncd || 0;
+      const bNCD = b.ncd || 0;
+      if (bNCD !== aNCD) return bNCD - aNCD;
       if (b.won !== a.won) return b.won - a.won;
       return a.name.localeCompare(b.name);
     });
@@ -220,7 +223,7 @@ function TournamentMode({
             <div style={{ textAlign: "left" }}>
               <h2 style={{ margin: 0, color: "#fff", fontSize: "24px" }}>{playerTeam}</h2>
               <p style={{ margin: "4px 0 0 0", color: "#ffd700", fontWeight: "bold" }}>
-                Rank #{playerRank} | {pointsTable[playerTeam].points} PTS ({pointsTable[playerTeam].won}W - {pointsTable[playerTeam].lost}L)
+                Rank #{playerRank} | {pointsTable[playerTeam].points} PTS ({pointsTable[playerTeam].won}W - {pointsTable[playerTeam].lost}L | NCD: {(pointsTable[playerTeam].ncd || 0) > 0 ? `+${pointsTable[playerTeam].ncd}` : pointsTable[playerTeam].ncd || 0})
               </p>
             </div>
           </div>
@@ -298,6 +301,7 @@ function TournamentMode({
                       <th style={{ padding: "12px 8px", textAlign: "center" }}>P</th>
                       <th style={{ padding: "12px 8px", textAlign: "center" }}>W</th>
                       <th style={{ padding: "12px 8px", textAlign: "center" }}>L</th>
+                      <th style={{ padding: "12px 8px", textAlign: "center" }}>NCD</th>
                       <th style={{ padding: "12px 8px", textAlign: "center" }}>PTS</th>
                     </tr>
                   </thead>
@@ -328,6 +332,9 @@ function TournamentMode({
                           <td style={{ padding: "12px 8px", textAlign: "center" }}>{team.played}</td>
                           <td style={{ padding: "12px 8px", textAlign: "center" }}>{team.won}</td>
                           <td style={{ padding: "12px 8px", textAlign: "center" }}>{team.lost}</td>
+                          <td style={{ padding: "12px 8px", textAlign: "center", color: (team.ncd || 0) > 0 ? "#39ff88" : (team.ncd || 0) < 0 ? "#ff4d4d" : "#aaa" }}>
+                            {(team.ncd || 0) > 0 ? `+${team.ncd}` : team.ncd || 0}
+                          </td>
                           <td style={{ padding: "12px 8px", textAlign: "center", color: isSelf ? "#ffd700" : "#39ff88", fontWeight: "bold" }}>
                             {team.points}
                           </td>

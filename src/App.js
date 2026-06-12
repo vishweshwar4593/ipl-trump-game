@@ -466,14 +466,20 @@ function App() {
       pTable[playerTeam].played += 1;
       pTable[oppTeam].played += 1;
       
+      const margin = isPlayerWin ? playerDeck.length : aiDeck.length;
+      
       if (isPlayerWin) {
         pTable[playerTeam].won += 1;
         pTable[playerTeam].points += 2;
+        pTable[playerTeam].ncd = (pTable[playerTeam].ncd || 0) + margin;
         pTable[oppTeam].lost += 1;
+        pTable[oppTeam].ncd = (pTable[oppTeam].ncd || 0) - margin;
       } else {
         pTable[oppTeam].won += 1;
         pTable[oppTeam].points += 2;
+        pTable[oppTeam].ncd = (pTable[oppTeam].ncd || 0) + margin;
         pTable[playerTeam].lost += 1;
+        pTable[playerTeam].ncd = (pTable[playerTeam].ncd || 0) - margin;
       }
 
       // 2. Simulate the other 4 matches of this round
@@ -490,14 +496,20 @@ function App() {
           pTable[match.home].played += 1;
           pTable[match.away].played += 1;
           
+          const simMargin = Math.floor(Math.random() * 5) + 1;
+          
           if (homeWins) {
             pTable[match.home].won += 1;
             pTable[match.home].points += 2;
+            pTable[match.home].ncd = (pTable[match.home].ncd || 0) + simMargin;
             pTable[match.away].lost += 1;
+            pTable[match.away].ncd = (pTable[match.away].ncd || 0) - simMargin;
           } else {
             pTable[match.away].won += 1;
             pTable[match.away].points += 2;
+            pTable[match.away].ncd = (pTable[match.away].ncd || 0) + simMargin;
             pTable[match.home].lost += 1;
+            pTable[match.home].ncd = (pTable[match.home].ncd || 0) - simMargin;
           }
         }
       });
@@ -513,6 +525,9 @@ function App() {
           .map(team => ({ name: team, ...pTable[team] }))
           .sort((a, b) => {
             if (b.points !== a.points) return b.points - a.points;
+            const aNCD = a.ncd || 0;
+            const bNCD = b.ncd || 0;
+            if (bNCD !== aNCD) return bNCD - aNCD;
             if (b.won !== a.won) return b.won - a.won;
             return a.name.localeCompare(b.name);
           });
