@@ -394,6 +394,13 @@ function App() {
   const handleHomeClick = () => setShowConfirm(true);
   const confirmGoHome = () => {
     setShowConfirm(false);
+
+    // If we are exiting an active tournament match, record it as a loss
+    if (gameMode === "tournament" && aiTeam && playerDeck.length > 0 && aiDeck.length > 0) {
+      updateTournamentProgress(false);
+      return;
+    }
+
     setGameMode(null);
     setPlayStyle(null);
     setGameOver(false);
@@ -859,7 +866,11 @@ function App() {
         <div className="modal-overlay">
           <div className="modal">
             <h2>Are you sure?</h2>
-            <p>Your current game will be lost.</p>
+            <p>
+              {gameMode === "tournament" && aiTeam
+                ? "Exiting mid-game will count as an automatic loss."
+                : "Your current game will be lost."}
+            </p>
             <div className="modal-actions" style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
               <button className="confirm-btn" onClick={confirmGoHome}>Yes</button>
               <button className="cancel-btn" onClick={cancelGoHome}>Cancel</button>
