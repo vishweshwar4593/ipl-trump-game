@@ -11,6 +11,10 @@ function OnlineMode({
     setOnlineRole,
     setPlayerTeam,
     setAiTeam,
+    setTurn,
+    setWeather,
+    setMoisture,
+    setPitchCondition,
     teams = [],
 }) {
     const isTeamMode = gameMode === "team" || gameMode === "tournament";
@@ -61,84 +65,54 @@ function OnlineMode({
         };
 
         const handleStartGame = (data) => {
-            // ✅ FIX: Removed dead localStorage.setItem("playerDeck") / ("aiDeck") —
-            // useGameEngine does NOT read from localStorage in online mode;
-            // decks are injected directly via setPlayerDeck/setAiDeck below.
             if (data.gameMode) setGameMode(data.gameMode);
             if (data.role) setOnlineRole(data.role);
             if (data.playerTeam) setPlayerTeam(data.playerTeam);
             if (data.aiTeam) setAiTeam(data.aiTeam);
 
-            let pDeck = data.playerDeck;
-            let aDeck = data.aiDeck;
+            if (data.startingTurn) setTurn(data.startingTurn);
+            if (data.initialWeather !== undefined) setWeather(data.initialWeather);
+            if (data.initialMoisture !== undefined) setMoisture(data.initialMoisture);
+            if (data.initialPitchCondition !== undefined) setPitchCondition(data.initialPitchCondition);
 
-            if (data.gameMode === "tournament") {
-                let deckLimit = 7;
-                try {
-                    const str = localStorage.getItem("savedTournamentState");
-                    const savedTournament = str ? JSON.parse(str) : null;
-                    if (savedTournament && savedTournament.stage === "playoffs" && savedTournament.playoffs) {
-                        const play = savedTournament.playoffs;
-                        const playerTeamLocal = savedTournament.playerTeam;
-                        const isFinalActive = play.final && play.final.home && !play.final.played && (play.final.home === playerTeamLocal || play.final.away === playerTeamLocal);
-                        if (isFinalActive) {
-                            deckLimit = 11;
-                        } else {
-                            deckLimit = 9;
-                        }
-                    }
-                } catch (e) {}
-
-                pDeck = [...pDeck].sort(() => Math.random() - 0.5).slice(0, deckLimit);
-                aDeck = [...aDeck].sort(() => Math.random() - 0.5).slice(0, deckLimit);
-            }
-
-            setPlayerDeck(pDeck);
-            setAiDeck(aDeck);
+            setPlayerDeck(data.playerDeck);
+            setAiDeck(data.aiDeck);
             setIsOnlineGameStarted(true);
         };
 
-        // Use socket.on() instead of socket.once() for reliability
-        // We'll remove listeners in cleanup function
         socket.on("roomCreated", handleRoomCreated);
         socket.on("startGame", handleStartGame);
 
-        // Joiner receives this when they should pick a team
-        // "on" is correct here — it may need to re-fire if the state resets
         const onTeamSelectRequired = ({ creatorTeam }) => {
             setOpponentTeam(creatorTeam);
             setJoinerPickingTeam(true);
             setJoinerWaitingForCreator(false);
-            setJoinerTeamPicked(null);   // reset any previous pick
+            setJoinerTeamPicked(null);
             setJoinerTeamConfirmed(false);
         };
         socket.on("teamSelectRequired", onTeamSelectRequired);
 
-        // Joiner receives this when creator hasn't picked yet
         const onWaitingForCreatorTeam = () => {
             setJoinerWaitingForCreator(true);
         };
         socket.on("waitingForCreatorTeam", onWaitingForCreatorTeam);
 
-        // ✅ FIX: replaced alert() with inline error state
         const onErrorMessage = (msg) => {
             setInlineError(msg);
         };
         socket.on("errorMessage", onErrorMessage);
 
         return () => {
-            socket.off("roomCreated", handleRoomCreated);       // ✅ FIX: pass handler ref
-            socket.off("startGame", handleStartGame);           // ✅ FIX: pass handler ref
+            socket.off("roomCreated", handleRoomCreated);
+            socket.off("startGame", handleStartGame);
             socket.off("teamSelectRequired", onTeamSelectRequired);
             socket.off("waitingForCreatorTeam", onWaitingForCreatorTeam);
             socket.off("errorMessage", onErrorMessage);
         };
-    }, [setPlayerDeck, setAiDeck, setIsOnlineGameStarted, setGameMode, setOnlineRole, setPlayerTeam, setAiTeam]);
+    }, [setPlayerDeck, setAiDeck, setIsOnlineGameStarted, setGameMode, setOnlineRole, setPlayerTeam, setAiTeam, setTurn, setWeather, setMoisture, setPitchCondition]);
 
-    // ── Actions ─────────────────────────────────────────────────────────────
     const handleCreateRoom = () => {
         if (!socket.connected) {
-            // ✅ FIX: replaced alert() with inline error
             setInlineError("Cannot connect to server. Please make sure the server is running!");
             return;
         }
@@ -146,7 +120,6 @@ function OnlineMode({
 
         setIsCreatingRoom(true);
 
-        // clear old timeout if any
         if (createRoomTimeoutRef.current) {
             clearTimeout(createRoomTimeoutRef.current);
         }
@@ -154,15 +127,31 @@ function OnlineMode({
         createRoomTimeoutRef.current = setTimeout(() => {
             setIsCreatingRoom(false);
             if (!isRoomCreated) {
-                // ✅ FIX: replaced alert() with inline error
                 setInlineError("Room creation timed out. Please try again.");
             }
         }, 5000);
 
-        socket.emit("createRoom", { gameMode });
+        let deckLimit = 7;
+        if (gameMode === "tournament") {
+            try {
+                const str = localStorage.getItem("savedTournamentState");
+                const savedTournament = str ? JSON.parse(str) : null;
+                if (savedTournament && savedTournament.stage === "playoffs" && savedTournament.playoffs) {
+                    const play = savedTournament.playoffs;
+                    const playerTeamLocal = savedTournament.playerTeam;
+                    const isFinalActive = play.final && play.final.home && !play.final.played && (play.final.home === playerTeamLocal || play.final.away === playerTeamLocal);
+                    if (isFinalActive) {
+                        deckLimit = 11;
+                    } else {
+                        deckLimit = 9;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        socket.emit("createRoom", { gameMode, deckLimit });
     };
 
-    // Clear timeout when room is created
     useEffect(() => {
         if (isRoomCreated && createRoomTimeoutRef.current) {
             clearTimeout(createRoomTimeoutRef.current);
@@ -180,16 +169,33 @@ function OnlineMode({
 
     const handleJoinRoom = () => {
         if (!roomId.trim()) {
-            // ✅ FIX: replaced alert() with inline error
             setInlineError("Please enter a Room Code.");
             return;
         }
         setInlineError(null);
-        socket.emit("joinRoom", roomId.trim().toUpperCase());
+
+        let deckLimit = 7;
+        if (gameMode === "tournament") {
+            try {
+                const str = localStorage.getItem("savedTournamentState");
+                const savedTournament = str ? JSON.parse(str) : null;
+                if (savedTournament && savedTournament.stage === "playoffs" && savedTournament.playoffs) {
+                    const play = savedTournament.playoffs;
+                    const playerTeamLocal = savedTournament.playerTeam;
+                    const isFinalActive = play.final && play.final.home && !play.final.played && (play.final.home === playerTeamLocal || play.final.away === playerTeamLocal);
+                    if (isFinalActive) {
+                        deckLimit = 11;
+                    } else {
+                        deckLimit = 9;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        socket.emit("joinRoom", { roomId: roomId.trim().toUpperCase(), deckLimit });
         localStorage.setItem("roomId", roomId.trim().toUpperCase());
     };
 
-    // ✅ FIX: Split into pick + confirm (was immediate emit on click)
     const handleJoinerPickTeam = (team) => {
         setJoinerTeamPicked(team);
     };

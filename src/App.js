@@ -184,6 +184,9 @@ function App() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [resumedGameState, setResumedGameState] = useState(null);
   const [opponentLeft, setOpponentLeft] = useState(false);
+  const [opponentDisconnected, setOpponentDisconnected] = useState(false);
+  const [disconnectTimeLeft, setDisconnectTimeLeft] = useState(15);
+  const disconnectTimerRef = useRef(null);
   const [tournamentState, setTournamentState] = useState(() => {
     try {
       const str = localStorage.getItem("savedTournamentState");
@@ -200,10 +203,10 @@ function App() {
   const {
     selectedStat, winner, round, animate,
     playerDeck, setPlayerDeck, aiDeck, setAiDeck,
-    turn, drawPile, showPlayerCard, showAiCard,
+    turn, setTurn, drawPile, showPlayerCard, showAiCard,
     playerHP, aiHP, turnTimerKey, gameOver, setGameOver,
-    player, ai, handleStatClick, TURN_TIMEOUT, pitchCondition,
-    weather, moisture,
+    player, ai, handleStatClick, TURN_TIMEOUT, pitchCondition, setPitchCondition,
+    weather, setWeather, moisture, setMoisture,
     playerSwapUsed,
     swapModalOpen, setSwapModalOpen,
     swapCandidates,
@@ -270,13 +273,80 @@ function App() {
     }
   }, [gameMode, selectedTime, setGameOver]);
 
-  // Listen for opponent disconnect in online games
+  // Reconnect warning countdown timer
+  useEffect(() => {
+    if (opponentDisconnected) {
+      setDisconnectTimeLeft(15);
+      disconnectTimerRef.current = setInterval(() => {
+        setDisconnectTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(disconnectTimerRef.current);
+            setOpponentDisconnected(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (disconnectTimerRef.current) {
+        clearInterval(disconnectTimerRef.current);
+      }
+    }
+    return () => {
+      if (disconnectTimerRef.current) {
+        clearInterval(disconnectTimerRef.current);
+      }
+    };
+  }, [opponentDisconnected]);
+
+  // Listen for online opponent drop/reconnect events
   useEffect(() => {
     if (playStyle !== "online") return;
-    const onPlayerLeft = () => setOpponentLeft(true);
+
+    const onOpponentDisconnected = () => {
+      setOpponentDisconnected(true);
+    };
+
+    const onOpponentReconnected = () => {
+      setOpponentDisconnected(false);
+    };
+
+    const onPlayerLeft = () => {
+      setOpponentDisconnected(false);
+      setOpponentLeft(true);
+    };
+
+    socket.on("opponentDisconnected", onOpponentDisconnected);
+    socket.on("opponentReconnected", onOpponentReconnected);
     socket.on("playerLeft", onPlayerLeft);
-    return () => socket.off("playerLeft", onPlayerLeft); // ✅ remove only this specific handler
+
+    return () => {
+      socket.off("opponentDisconnected", onOpponentDisconnected);
+      socket.off("opponentReconnected", onOpponentReconnected);
+      socket.off("playerLeft", onPlayerLeft);
+    };
   }, [playStyle]);
+
+  // Handle automatic room reconnection on socket connect/reconnect
+  useEffect(() => {
+    if (playStyle !== "online") return;
+
+    const handleReconnect = () => {
+      const roomId = localStorage.getItem("roomId");
+      if (roomId && user && user.displayName) {
+        socket.emit("reconnectRoom", { roomId, username: user.displayName });
+      }
+    };
+
+    if (socket.connected) {
+      handleReconnect();
+    }
+
+    socket.on("connect", handleReconnect);
+    return () => {
+      socket.off("connect", handleReconnect);
+    };
+  }, [playStyle, user]);
 
   // Auto-enter fullscreen and landscape lock ONLY when active gameplay board starts
   useEffect(() => {
@@ -788,6 +858,10 @@ function App() {
         setOnlineRole={setOnlineRole}
         setPlayerTeam={setPlayerTeam}
         setAiTeam={setAiTeam}
+        setTurn={setTurn}
+        setWeather={setWeather}
+        setMoisture={setMoisture}
+        setPitchCondition={setPitchCondition}
         teams={teams}
       />
     );
@@ -874,6 +948,21 @@ function App() {
             <div className="modal-actions" style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
               <button className="confirm-btn" onClick={confirmGoHome}>Yes</button>
               <button className="cancel-btn" onClick={cancelGoHome}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {opponentDisconnected && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ textAlign: "center", maxWidth: 360 }}>
+            <div style={{ fontSize: 52, marginBottom: 12 }}>⚠️</div>
+            <h2 style={{ color: "#ffc107", margin: "0 0 8px" }}>Connection Lost</h2>
+            <p style={{ color: "#ccc", marginBottom: 24 }}>
+              Opponent disconnected. Waiting for them to reconnect...
+            </p>
+            <div style={{ fontSize: 24, fontWeight: "bold", color: "#ffc107" }}>
+              {disconnectTimeLeft}s
             </div>
           </div>
         </div>

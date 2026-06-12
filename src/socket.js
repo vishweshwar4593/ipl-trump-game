@@ -1,13 +1,16 @@
 import { io } from "socket.io-client";
 
-const SOCKET_URL = "https://ipl-trump-game.onrender.com";
+const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
+const SOCKET_URL = process.env.NODE_ENV === "development"
+  ? `http://${host}:5000`
+  : "https://ipl-trump-game.onrender.com";
 
 if (process.env.NODE_ENV === "development") {
   console.log("Connecting to:", SOCKET_URL);
 }
 
 const socket = io(SOCKET_URL, {
-  transports: process.env.NODE_ENV === "development" ? ["polling", "websocket"] : ["websocket"], // 🔥 WebSockets only for Render, polling fallback for local dev
+  transports: ["polling", "websocket"], // Allow both polling and websocket in all environments
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: 3,

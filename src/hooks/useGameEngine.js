@@ -270,6 +270,7 @@ export function useGameEngine({
   useEffect(() => { drawPileRef.current = drawPile; }, [drawPile]);
 
   useEffect(() => {
+    if (playStyle === "online") return;
     if (gameMode !== "time" && gameMode !== "battle") {
       setPitchCondition(null);
       setWeather(null);
@@ -319,7 +320,7 @@ export function useGameEngine({
       
       return nextWeather;
     });
-  }, [round, gameMode]);
+  }, [round, gameMode, playStyle]);
 
   useEffect(() => {
     // Reset swap grace on every round increment
@@ -438,17 +439,7 @@ export function useGameEngine({
   // onlineRole intentionally removed — no longer used in this effect.
   }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle, tournamentState]);
 
-  // ✅ FIX: Deferred online toss — only runs once both decks have been injected
-  // by OnlineMode's "startGame" handler. Previously setTurn fired before
-  // setPlayerDeck/setAiDeck, causing handleStatClick to run against undefined
-  // player/ai on the first turn and potentially crashing or silently no-op'ing.
-  useEffect(() => {
-    if (playStyle !== "online") return;
-    if (!playerDeck.length || !aiDeck.length) return; // decks not yet injected
-    if (turn !== null) return;                        // toss already set — don't override mid-game
-    const tossWinner = onlineRole === "creator" ? "player" : "ai";
-    setTurn(tossWinner);
-  }, [playStyle, playerDeck, aiDeck, turn, onlineRole]);
+  // (Online starting turn is now initialized and set by OnlineMode on "startGame")
 
   // Note: Auto-save logic has been removed to ensure standard matches are lost permanently when closing, refreshing, or going home. Tournament campaign saves remain preserved in their separate flow.
 
@@ -527,6 +518,7 @@ export function useGameEngine({
   }, [gameMode, round, pitchCondition, weather, moisture]);
 
 const handleTurnTimeout = useCallback(() => {
+    if (playStyle === "online") return;
     if (!player || !ai || selectedStat !== null || animate || gameOver) return;
 
     // When player times out, their card goes to the opponent
@@ -611,7 +603,7 @@ const handleTurnTimeout = useCallback(() => {
         setShowAiCard(false);
       }, 1500);
     }
-  }, [player, ai, selectedStat, animate, gameOver, turn, isMultiplayerMode, playLose, playWin]);
+  }, [player, ai, selectedStat, animate, gameOver, turn, isMultiplayerMode, playLose, playWin, playStyle]);
 
   const handleStatClick = useCallback((stat, isRemote = false) => {
     // In online mode, the local user is always "player". Block clicks if it's not their turn.
@@ -619,7 +611,8 @@ const handleTurnTimeout = useCallback(() => {
 
     if (playStyle === "online" && !isRemote) {
       const roomId = localStorage.getItem("roomId");
-      socket.emit("playStat", { roomId, stat });
+      socket.emit("playStat", { roomId, stat, roundNumber: round });
+      return;
     }
 
     if (!player || !ai || gameOver) return;
@@ -760,7 +753,7 @@ const handleTurnTimeout = useCallback(() => {
         setConsecutiveTurns(1);
       }
     }, 2000);
-  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode]);
+  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode, round]);
   // ✅ FIX 3: drawPile removed from deps — now read via drawPileRef to prevent stale closure
 
   // ✅ FIX 2: Keep a stable ref to the latest handleStatClick so the socket listener
@@ -768,17 +761,90 @@ const handleTurnTimeout = useCallback(() => {
   const handleStatClickRef = useRef(handleStatClick);
   useEffect(() => { handleStatClickRef.current = handleStatClick; }, [handleStatClick]);
 
-  // ✅ FIX 2: Register "bothPlayed" listener exactly ONCE.
-  // Previously it re-registered every time handleStatClick changed (many deps),
-  // causing multiple handlers to fire simultaneously for a single event.
+  // Server-authoritative mid-game state synchronization
   useEffect(() => {
-    const handler = (stat) => handleStatClickRef.current(stat, true);
-    socket.on("bothPlayed", handler);
-    return () => socket.off("bothPlayed", handler); // ✅ remove only this specific handler
-  }, []); // empty deps — intentional, handler ref keeps it fresh
+    if (playStyle !== "online") return;
+
+    const handleStateUpdate = (update) => {
+      if (update.playerDeck) setPlayerDeck(update.playerDeck);
+      if (update.aiDeck) setAiDeck(update.aiDeck);
+      if (update.playerFranchisePool) setPlayerFranchisePool(update.playerFranchisePool);
+      if (update.aiFranchisePool) setAiFranchisePool(update.aiFranchisePool);
+      if (update.playerHP !== undefined) setPlayerHP(update.playerHP);
+      if (update.aiHP !== undefined) setAiHP(update.aiHP);
+      if (update.turn) setTurn(update.turn);
+      if (update.round !== undefined) setRound(update.round);
+      if (update.consecutiveTurns !== undefined) setConsecutiveTurns(update.consecutiveTurns);
+      if (update.drawPile) setDrawPile(update.drawPile);
+      if (update.weather !== undefined) setWeather(update.weather);
+      if (update.moisture !== undefined) setMoisture(update.moisture);
+      if (update.pitchCondition !== undefined) setPitchCondition(update.pitchCondition);
+      if (update.gameOver !== undefined) setGameOver(update.gameOver);
+    };
+
+    socket.on("gameStateUpdate", handleStateUpdate);
+    return () => {
+      socket.off("gameStateUpdate", handleStateUpdate);
+    };
+  }, [playStyle]);
+
+  const playWinRef = useRef(playWin);
+  const playLoseRef = useRef(playLose);
+  const playHitRef = useRef(playHit);
+  useEffect(() => {
+    playWinRef.current = playWin;
+    playLoseRef.current = playLose;
+    playHitRef.current = playHit;
+  }, [playWin, playLose, playHit]);
+
+  // Server-authoritative round resolution start (reveal card and play animations)
+  useEffect(() => {
+    if (playStyle !== "online") return;
+
+    const handleResolutionStart = ({ stat, opponentCard, result, damage }) => {
+      setAiDeck(prev => {
+        if (!prev || prev.length === 0) return prev;
+        return [opponentCard, ...prev.slice(1)];
+      });
+
+      setSelectedStat(stat);
+      setShowPlayerCard(true);
+      setShowAiCard(true);
+
+      setTimeout(() => {
+        setWinner(result);
+        if (result === "player") {
+          playWinRef.current();
+          setTimeout(() => playHitRef.current(), 150);
+        } else if (result === "ai") {
+          playLoseRef.current();
+          setTimeout(() => playHitRef.current(), 150);
+        }
+      }, 300);
+
+      setTimeout(() => setAnimate(true), 500);
+
+      setTimeout(() => {
+        setSelectedStat(null);
+        setWinner(null);
+        setAnimate(false);
+        setShowAiCard(false);
+      }, 2000);
+    };
+
+    socket.on("roundResolutionStart", handleResolutionStart);
+    return () => {
+      socket.off("roundResolutionStart", handleResolutionStart);
+    };
+  }, [playStyle]);
 
   // Option B: Opponent swapped synchronization listener
   const handleOpponentSwapped = useCallback((selectedCandidate) => {
+    if (playStyle === "online") {
+      setSwapAnnouncement(`🔄 Opponent Tactical Swap: subbed in ${selectedCandidate.name}!`);
+      setTimeout(() => setSwapAnnouncement(null), 4000);
+      return;
+    }
     setAiDeck(prevDeck => {
       if (!prevDeck || prevDeck.length === 0) return prevDeck;
       if (gameMode === "team" || gameMode === "tournament") {
@@ -795,7 +861,7 @@ const handleTurnTimeout = useCallback(() => {
     // Trigger notification banner
     setSwapAnnouncement(`🔄 Opponent Tactical Swap: subbed in ${selectedCandidate.name}!`);
     setTimeout(() => setSwapAnnouncement(null), 4000);
-  }, [gameMode]);
+  }, [gameMode, playStyle]);
 
   const handleOpponentSwappedRef = useRef(handleOpponentSwapped);
   useEffect(() => { handleOpponentSwappedRef.current = handleOpponentSwapped; }, [handleOpponentSwapped]);
@@ -822,6 +888,13 @@ const handleTurnTimeout = useCallback(() => {
   const executePlayerSwap = useCallback((selectedCandidate) => {
     if (playerSwapUsed || playerDeck.length === 0 || !selectedCandidate) return;
     
+    if (playStyle === "online") {
+      const roomId = localStorage.getItem("roomId");
+      socket.emit("playerSwapped", { roomId, selectedCandidate });
+      setSwapModalOpen(false);
+      return;
+    }
+    
     const currentActiveCard = playerDeck[0];
     const unselectedCandidate = swapCandidates.find(c => c.name !== selectedCandidate.name);
     
@@ -840,11 +913,6 @@ const handleTurnTimeout = useCallback(() => {
     const discardMsg = (gameMode === "team" || gameMode === "tournament") ? " (Swapped card discarded)" : "";
     setSwapAnnouncement(`🔄 Tactical Swap: ${currentActiveCard.name} subbed for ${selectedCandidate.name}!${discardMsg}`);
     setTimeout(() => setSwapAnnouncement(null), 4000);
-
-    if (playStyle === "online") {
-      const roomId = localStorage.getItem("roomId");
-      socket.emit("playerSwapped", { roomId, selectedCandidate });
-    }
   }, [playerSwapUsed, playerDeck, swapCandidates, gameMode, playStyle]);
 
   // Hook A: Handle card visibility and key resets when the active turn transitions
@@ -966,6 +1034,7 @@ const handleTurnTimeout = useCallback(() => {
 
   // Hook C: Turn timeout countdown timer execution
   useEffect(() => {
+    if (playStyle === "online") return; // Disable local timeout timer in online mode
     const shouldRunTimeout = selectedStat === null && !gameOver && !!turn && !swapModalOpen && !showConfirm;
 
     if (shouldRunTimeout) {
@@ -974,7 +1043,7 @@ const handleTurnTimeout = useCallback(() => {
       }, TURN_TIMEOUT);
       return () => clearTimeout(timeout);
     }
-  }, [selectedStat, gameOver, turn, TURN_TIMEOUT, swapModalOpen, showConfirm]);
+  }, [selectedStat, gameOver, turn, TURN_TIMEOUT, swapModalOpen, showConfirm, playStyle]);
 
   // Hook D: 5-Second Tactical Swap Timer Countdown
   useEffect(() => {
