@@ -1,9 +1,9 @@
 import { io } from "socket.io-client";
 
 const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
-const SOCKET_URL = process.env.NODE_ENV === "development"
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || (process.env.NODE_ENV === "development"
   ? `http://${host}:5000`
-  : "https://ipl-trump-game.onrender.com";
+  : "https://ipl-trump-game.onrender.com");
 
 if (process.env.NODE_ENV === "development") {
   console.log("Connecting to:", SOCKET_URL);

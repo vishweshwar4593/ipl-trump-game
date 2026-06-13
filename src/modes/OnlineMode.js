@@ -168,7 +168,8 @@ function OnlineMode({
     };
 
     const handleJoinRoom = () => {
-        if (!roomId.trim()) {
+        const cleanRoomId = roomId.replace(/\s+/g, "").toUpperCase();
+        if (!cleanRoomId) {
             setInlineError("Please enter a Room Code.");
             return;
         }
@@ -192,8 +193,8 @@ function OnlineMode({
             } catch (e) {}
         }
 
-        socket.emit("joinRoom", { roomId: roomId.trim().toUpperCase(), deckLimit });
-        localStorage.setItem("roomId", roomId.trim().toUpperCase());
+        socket.emit("joinRoom", { roomId: cleanRoomId, deckLimit });
+        localStorage.setItem("roomId", cleanRoomId);
     };
 
     const handleJoinerPickTeam = (team) => {
@@ -449,7 +450,7 @@ function OnlineMode({
                     type="text"
                     placeholder="Enter Room Code"
                     value={roomId}
-                    onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                    onChange={(e) => setRoomId(e.target.value.replace(/\s+/g, "").toUpperCase())}
                     style={{
                         padding: "12px",
                         borderRadius: "12px",
