@@ -384,12 +384,16 @@ io.on("connection", (socket) => {
 
     socket.on("registerUser", (username) => {
         if (activeUsers[username] && activeUsers[username] !== socket.id) {
-            console.log(`[Security] Concurrent login attempt for ${username}. Rejecting socket ${socket.id}`);
-            socket.emit("loginConflict");
-        } else {
-            activeUsers[username] = socket.id;
-            socket.username = username;
+            const oldSocketId = activeUsers[username];
+            const oldSocket = io.sockets.sockets.get(oldSocketId);
+            if (oldSocket) {
+                console.log(`[Security] Kicking old session for ${username} (socket: ${oldSocketId}) in favor of new socket ${socket.id}`);
+                oldSocket.emit("loginConflict");
+                oldSocket.disconnect(true);
+            }
         }
+        activeUsers[username] = socket.id;
+        socket.username = username;
     });
 
     socket.on("createRoom", (data) => {
