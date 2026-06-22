@@ -819,6 +819,8 @@ const handleTurnTimeout = useCallback(() => {
       if (update.moisture !== undefined) setMoisture(update.moisture);
       if (update.pitchCondition !== undefined) setPitchCondition(update.pitchCondition);
       if (update.gameOver !== undefined) setGameOver(update.gameOver);
+      if (update.playerSwapUsed !== undefined) setPlayerSwapsLeft(update.playerSwapUsed ? 0 : 1);
+      if (update.aiSwapUsed !== undefined) setAiSwapUsed(update.aiSwapUsed);
     };
 
     socket.on("gameStateUpdate", handleStateUpdate);

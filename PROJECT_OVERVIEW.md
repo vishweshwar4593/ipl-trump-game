@@ -82,7 +82,7 @@ ipl-trump-game-master/
 
 ## 🎮 Interactive Game Modes & Mechanics
 
-The game engine (`useGameEngine.js`) coordinates 4 distinct modes, operating under 3 play styles (AI, Local Multiplayer, Online Multiplayer):
+The game engine (`useGameEngine.js`) coordinates 4 distinct modes, operating under 4 play styles (AI, Local Multiplayer, Online Multiplayer, Spectator):
 
 | Mode | Objective | Mechanics |
 | :--- | :--- | :--- |
@@ -90,12 +90,13 @@ The game engine (`useGameEngine.js`) coordinates 4 distinct modes, operating und
 | **Time Mode** | Score maximum card wins | Timed match (e.g. 120s) where decisions must be made before timer expiry. Turn time counts down. |
 | **Battle Mode** | Reduce opponent HP to 0 | Win stats to inflict damage to enemy HP. HP is computed from margins scaled by `STAT_WEIGHTS`. |
 | **Team Mode** | Last franchise standing wins | Restricts play to chosen franchise team decks. Cards captured are kept in the original team pool. |
-| **Tournament Mode** | Complete a 9-round season campaign | Play league and playoff matches. Deck sizes dynamically expand based on stakes (7 cards in league, 9 in playoffs, 11 in Grand Final). |
+| **Tournament Mode** | Complete a 9-round season campaign | Play league and playoff matches. Deck sizes dynamically expand based on stakes (7 cards in league, 9 in playoffs, 11 in Grand Final). Maximum 1 tactical swap is allowed per match. |
 
 ### Play Styles:
 1.  **Play vs AI 🤖**: An intelligent computer opponent. The AI dynamically determines its card type (batsman, bowler, all-rounder) and calculates mathematically optimized stats to play using a custom logarithmic model with randomized weights.
 2.  **Local Multiplayer 🎮**: Hot-seat multiplayer on a single device. Turns are fully isolated—the inactive player's card remains turned over until selection.
 3.  **Play Online 🌐**: Real-time room creation, custom match codes, and team draft screens powered by Socket.IO.
+4.  **Spectate Mode 👁️**: Auto AI vs AI match viewing. Spectator mode allows watching non-player matches (or playoff rounds) play out dynamically with both cards visible on screen.
 
 ### Custom Advanced Gameplay Mechanics:
 *   **Cricket "Over" Turn Rotation**: To prevent one-sided games, the game tracks active turn control streaks. If a player maintains the turn for **3 consecutive rounds** (one "Over"), the turn automatically rotates to the opponent, keeping the match balanced and engaging.
@@ -108,6 +109,9 @@ The game engine (`useGameEngine.js`) coordinates 4 distinct modes, operating und
 
 Your code includes several key optimizations and security mechanisms:
 
+*   **Achievement System & Auto-Dismiss Toast**: Tracks player accomplishments (e.g., winning margins, remaining time, coming from behind) and triggers visual toast notifications upon unlock. Toast alerts are equipped with a **4-second auto-dismiss timer** as well as touch-to-dismiss capabilities.
+*   **Landscape Release on Match Finish**: Reorientation lock to landscape is immediately released upon match termination (e.g., deck size reaching 0, HP reaching 0, or timer expiring). This allows the post-match **Result Screen** to render in user-friendly portrait mode.
+*   **State-Clearing on Exit**: Exiting a match back to the Home Screen completely clears and resets all state variables in `useGameEngine` to prevent gameplay loops and sound effects from running in the background.
 *   **Concurrent Session Prevention**: The backend monitors active users (`activeUsers`) and immediately triggers a `loginConflict` event if the same displayName tries to connect from another client socket, automatically logging out the stale session.
 *   **Server-Side Stat Validation**: In `server.js`, a strict allowlist (`VALID_STATS`) rejects any client-transmitted stats that do not match real parameters (e.g. preventing cheating via inspector tools).
 *   **Socket Multi-Emitter Cleanup**: All event listeners in `OnlineMode.js` and `useGameEngine.js` explicitly clean up specific named references to avoid duplicate event execution on reconnect.

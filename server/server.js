@@ -4,6 +4,43 @@ const { Server } = require("socket.io");
 const players = require("./players.json"); // ✅ local copy, safe for deployment
 const { initCron } = require("./cronScheduler");
 
+// Initialize Firebase Admin SDK
+const admin = require("firebase-admin");
+let firebaseAdminReady = false;
+
+if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    try {
+        admin.initializeApp({
+            credential: admin.credential.cert({
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+            })
+        });
+        firebaseAdminReady = true;
+        console.log("[Firebase Admin] Initialized successfully using environment variables.");
+    } catch (err) {
+        console.error("[Firebase Admin] Initialization failed:", err.message);
+    }
+} else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    try {
+        admin.initializeApp({
+            credential: admin.credential.applicationDefault()
+        });
+        firebaseAdminReady = true;
+        console.log("[Firebase Admin] Initialized successfully using GOOGLE_APPLICATION_CREDENTIALS.");
+    } catch (err) {
+        console.error("[Firebase Admin] Initialization failed from credentials file:", err.message);
+    }
+} else {
+    if (process.env.NODE_ENV === "production") {
+        console.error("[Firebase Admin] FATAL: Firebase credentials are missing in production! Crashing start.");
+        process.exit(1);
+    } else {
+        console.warn("[Firebase Admin] WARNING: Firebase credentials not found. Running in development fallback mode.");
+    }
+}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -203,7 +240,7 @@ const roomModes = {}; // tracks whether a room is "classic", "time", or "team"
 const roomDeckLimits = {}; // tracks roomId -> deckLimit for tournament
 const roomTeams = {}; // tracks { creatorTeam, joinerTeam }
 const socketRoomCount = {}; // socketId → number of rooms created
-const activeUsers = {}; // tracks username -> socket.id to prevent concurrent logins
+const activeUsers = {}; // tracks uid -> socket.id to prevent concurrent logins
 const MAX_ROOMS_PER_SOCKET = 5;
 
 const games = {}; // roomId -> gameState
@@ -262,6 +299,8 @@ function emitGameStateUpdate(roomId) {
             moisture: game.moisture,
             pitchCondition: game.pitchCondition,
             gameOver: creatorGameOver,
+            playerSwapUsed: game.creatorSwapUsed,
+            aiSwapUsed: game.joinerSwapUsed,
         });
     }
 
@@ -281,6 +320,8 @@ function emitGameStateUpdate(roomId) {
             moisture: game.moisture,
             pitchCondition: game.pitchCondition,
             gameOver: joinerGameOver,
+            playerSwapUsed: game.joinerSwapUsed,
+            aiSwapUsed: game.creatorSwapUsed,
         });
     }
 }
@@ -325,6 +366,11 @@ function dealDecks(roomId) {
         pitchCondition = moisture >= 75 ? "green" : moisture >= 50 ? "balanced" : moisture >= 25 ? "dry" : "dusty";
     }
 
+    const creatorSocket = io.sockets.sockets.get(rooms[roomId][0]);
+    const joinerSocket = io.sockets.sockets.get(rooms[roomId][1]);
+    const creatorUid = creatorSocket ? creatorSocket.uid : null;
+    const joinerUid = joinerSocket ? joinerSocket.uid : null;
+
     games[roomId] = {
         creatorDeck,
         joinerDeck,
@@ -348,6 +394,8 @@ function dealDecks(roomId) {
         creatorDisconnected: false,
         joinerDisconnected: false,
         disconnectTimeout: null,
+        creatorUid,
+        joinerUid,
     };
 
     io.to(rooms[roomId][0]).emit("startGame", {
@@ -382,18 +430,54 @@ function dealDecks(roomId) {
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    socket.on("registerUser", (username) => {
-        if (activeUsers[username] && activeUsers[username] !== socket.id) {
-            const oldSocketId = activeUsers[username];
+    socket.on("registerUser", async (data) => {
+        if (!data || typeof data !== "object") return;
+        const { uid, displayName, token } = data;
+        if (!uid || !displayName) return;
+
+        let verifiedUid = uid;
+
+        if (token) {
+            if (firebaseAdminReady) {
+                try {
+                    const decodedToken = await admin.auth().verifyIdToken(token);
+                    verifiedUid = decodedToken.uid;
+                } catch (err) {
+                    console.error(`[Security] ID Token verification failed for ${displayName}:`, err.message);
+                    socket.emit("errorMessage", "Session verification failed. Please log in again.");
+                    return;
+                }
+            } else {
+                if (process.env.NODE_ENV === "production") {
+                    console.error(`[Security] Token verification requested in production, but Firebase Admin is not initialized!`);
+                    socket.emit("errorMessage", "Server security misconfiguration. Please contact support.");
+                    return;
+                } else {
+                    console.warn(`[Security] Development bypass: trusting UID ${uid} because Firebase Admin is not ready.`);
+                }
+            }
+        } else {
+            // Guest session validation
+            if (!uid.startsWith("guest_")) {
+                console.error(`[Security] Unauthenticated user ${displayName} attempted to register with non-guest UID ${uid}`);
+                socket.emit("errorMessage", "Invalid session UID");
+                return;
+            }
+        }
+
+        if (activeUsers[verifiedUid] && activeUsers[verifiedUid] !== socket.id) {
+            const oldSocketId = activeUsers[verifiedUid];
             const oldSocket = io.sockets.sockets.get(oldSocketId);
             if (oldSocket) {
-                console.log(`[Security] Kicking old session for ${username} (socket: ${oldSocketId}) in favor of new socket ${socket.id}`);
+                console.log(`[Security] Kicking old session for ${displayName} (${verifiedUid}) in favor of new socket ${socket.id}`);
                 oldSocket.emit("loginConflict");
                 oldSocket.disconnect(true);
             }
         }
-        activeUsers[username] = socket.id;
-        socket.username = username;
+        activeUsers[verifiedUid] = socket.id;
+        socket.uid = verifiedUid;
+        socket.username = displayName;
+        console.log(`User registered: ${displayName} (${verifiedUid})`);
     });
 
     socket.on("createRoom", (data) => {
@@ -420,6 +504,8 @@ io.on("connection", (socket) => {
 
     socket.on("creatorSelectTeam", ({ roomId, team }) => {
         if (!rooms[roomId] || !roomTeams[roomId]) return;
+        if (rooms[roomId][0] !== socket.id) return; // Verify sender is creator
+        if (games[roomId]) return; // Game already started
         roomTeams[roomId].creatorTeam = team;
         console.log(`Room ${roomId}: creator picked team "${team}"`);
 
@@ -458,6 +544,8 @@ io.on("connection", (socket) => {
 
     socket.on("joinerSelectTeam", ({ roomId, joinerTeam }) => {
         if (!rooms[roomId] || !roomTeams[roomId]) return;
+        if (rooms[roomId][1] !== socket.id) return; // Verify sender is joiner
+        if (games[roomId]) return; // Game already started
         roomTeams[roomId].joinerTeam = joinerTeam;
         console.log(`Room ${roomId}: joiner picked team "${joinerTeam}"`);
         dealDecks(roomId);
@@ -467,10 +555,14 @@ io.on("connection", (socket) => {
         const game = games[roomId];
         if (!game) return;
 
+        // State and role validations
         if (game.isResolving) return;
+        if (game.creatorDeck.length === 0 || game.joinerDeck.length === 0) return;
+        if (game.gameMode === "battle" && (game.creatorHP <= 0 || game.joinerHP <= 0)) return;
         if (roundNumber !== game.round) return;
 
         const socketIndex = rooms[roomId].indexOf(socket.id);
+        if (socketIndex === -1) return;
         const playerRole = socketIndex === 0 ? "creator" : "joiner";
         if (game.turn !== playerRole) return;
 
@@ -603,8 +695,11 @@ io.on("connection", (socket) => {
         if (!game) return;
 
         if (game.isResolving) return;
+        if (game.creatorDeck.length === 0 || game.joinerDeck.length === 0) return;
+        if (game.gameMode === "battle" && (game.creatorHP <= 0 || game.joinerHP <= 0)) return;
 
         const socketIndex = rooms[roomId].indexOf(socket.id);
+        if (socketIndex === -1) return;
         const playerRole = socketIndex === 0 ? "creator" : "joiner";
         if (game.turn !== playerRole) return;
 
@@ -614,7 +709,7 @@ io.on("connection", (socket) => {
 
         const reserve = isCreator ? game.creatorReserve : game.joinerReserve;
         const candidate = reserve.find(c => c.name === selectedCandidate.name);
-        if (!candidate) return;
+        if (!candidate) return; // Verify selected card is in their reserve pool
 
         if (isCreator) {
             const currentActive = game.creatorDeck[0];
@@ -644,65 +739,99 @@ io.on("connection", (socket) => {
         emitGameStateUpdate(roomId);
     });
 
-    socket.on("reconnectRoom", ({ roomId, username }) => {
+    socket.on("reconnectRoom", async (data) => {
+        if (!data || typeof data !== "object") return;
+        const { roomId, uid, displayName, token } = data;
         const game = games[roomId];
-        if (!game) return;
+        if (!game) {
+            socket.emit("errorMessage", "Game session expired or not found");
+            return;
+        }
+
+        let verifiedUid = uid;
+
+        if (token) {
+            if (firebaseAdminReady) {
+                try {
+                    const decodedToken = await admin.auth().verifyIdToken(token);
+                    verifiedUid = decodedToken.uid;
+                } catch (err) {
+                    console.error(`[Security] ID Token verification failed for reconnecting user ${displayName}:`, err.message);
+                    socket.emit("errorMessage", "Reconnect verification failed.");
+                    return;
+                }
+            } else {
+                if (process.env.NODE_ENV === "production") {
+                    console.error(`[Security] Token verification requested on reconnect in production, but Firebase Admin is not initialized!`);
+                    socket.emit("errorMessage", "Security configuration error");
+                    return;
+                }
+            }
+        } else {
+            // Guest session
+            if (!uid.startsWith("guest_")) {
+                socket.emit("errorMessage", "Invalid reconnect UID");
+                return;
+            }
+        }
 
         let role = null;
-        if (rooms[roomId][0] === socket.id) {
+        if (game.creatorUid === verifiedUid) {
             role = "creator";
-        } else if (rooms[roomId][1] === socket.id) {
+            rooms[roomId][0] = socket.id;
+        } else if (game.joinerUid === verifiedUid) {
             role = "joiner";
+            rooms[roomId][1] = socket.id;
         } else {
-            if (game.creatorDisconnected) {
-                role = "creator";
-                rooms[roomId][0] = socket.id;
-            } else if (game.joinerDisconnected) {
-                role = "joiner";
-                rooms[roomId][1] = socket.id;
-            }
+            console.warn(`[Security] Unauthorized reconnect attempt by ${displayName} (${verifiedUid}) in room ${roomId}`);
+            socket.emit("errorMessage", "Unauthorized room access");
+            return;
         }
 
-        if (role) {
-            socket.join(roomId);
-            if (role === "creator") {
-                game.creatorDisconnected = false;
-            } else {
-                game.joinerDisconnected = false;
-            }
+        socket.uid = verifiedUid;
+        socket.username = displayName;
+        activeUsers[verifiedUid] = socket.id;
 
-            if (!game.creatorDisconnected && !game.joinerDisconnected) {
-                if (game.disconnectTimeout) {
-                    clearTimeout(game.disconnectTimeout);
-                    game.disconnectTimeout = null;
-                }
-                io.to(roomId).emit("opponentReconnected", { playerRole: role });
-            }
-
-            socket.emit("startGame", {
-                role,
-                playerDeck: role === "creator" ? game.creatorDeck : game.joinerDeck,
-                aiDeck: maskDeck(role === "creator" ? game.joinerDeck : game.creatorDeck, false),
-                gameMode: game.gameMode,
-                playerTeam: role === "creator" ? game.creatorTeam : game.joinerTeam,
-                aiTeam: role === "creator" ? game.joinerTeam : game.creatorTeam,
-                isReconnect: true
-            });
-
-            emitGameStateUpdate(roomId);
-            console.log(`User reconnected to room ${roomId} as ${role}`);
+        socket.join(roomId);
+        if (role === "creator") {
+            game.creatorDisconnected = false;
+        } else {
+            game.joinerDisconnected = false;
         }
+
+        if (!game.creatorDisconnected && !game.joinerDisconnected) {
+            if (game.disconnectTimeout) {
+                clearTimeout(game.disconnectTimeout);
+                game.disconnectTimeout = null;
+            }
+            io.to(roomId).emit("opponentReconnected", { playerRole: role });
+        }
+
+        socket.emit("startGame", {
+            role,
+            playerDeck: role === "creator" ? game.creatorDeck : game.joinerDeck,
+            aiDeck: maskDeck(role === "creator" ? game.joinerDeck : game.creatorDeck, false),
+            gameMode: game.gameMode,
+            playerTeam: role === "creator" ? game.creatorTeam : game.joinerTeam,
+            aiTeam: role === "creator" ? game.joinerTeam : game.creatorTeam,
+            isReconnect: true
+        });
+
+        emitGameStateUpdate(roomId);
+        console.log(`User reconnected: ${displayName} (${verifiedUid}) in room ${roomId} as ${role}`);
     });
 
     socket.on("sendEmote", ({ roomId, emote }) => {
+        if (!rooms[roomId]) return;
+        if (!rooms[roomId].includes(socket.id)) return;
         socket.to(roomId).emit("receiveEmote", emote);
     });
 
     socket.on("disconnect", () => {
         console.log("User disconnected:", socket.id);
 
-        if (socket.username && activeUsers[socket.username] === socket.id) {
-            delete activeUsers[socket.username];
+        if (socket.uid && activeUsers[socket.uid] === socket.id) {
+            delete activeUsers[socket.uid];
         }
 
         const affectedRooms = Object.keys(rooms).filter(
@@ -725,7 +854,7 @@ io.on("connection", (socket) => {
 
                 socket.to(roomId).emit("opponentDisconnected", {
                     playerRole,
-                    timeLeft: 15
+                    timeLeft: 45
                 });
 
                 if (game.disconnectTimeout) {
@@ -734,7 +863,7 @@ io.on("connection", (socket) => {
                 game.disconnectTimeout = setTimeout(() => {
                     io.to(roomId).emit("playerLeft");
                     deleteRoom(roomId);
-                }, 15000);
+                }, 45000);
             } else {
                 rooms[roomId] = rooms[roomId].filter(id => id !== socket.id);
                 if (rooms[roomId].length === 0) {

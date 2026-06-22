@@ -59,6 +59,19 @@ function App() {
   // Hall of Fame state
   const [hallOfFame, setHallOfFame] = useState([]);
 
+  // Generate or retrieve persistent guest UID
+  const [guestUid] = useState(() => {
+    let id = localStorage.getItem("guestUid");
+    if (!id) {
+      id = "guest_" + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem("guestUid", id);
+    }
+    return id;
+  });
+
+  const clientUid = user ? user.uid : (isGuest ? guestUid : null);
+  const clientDisplayName = user ? user.displayName : (isGuest ? "Guest" : null);
+
   useEffect(() => {
     if (authUser === undefined) {
       setUser(undefined);
@@ -108,9 +121,17 @@ function App() {
 
 
   useEffect(() => {
-    if (user && user.displayName) {
-      const register = () => {
-        socket.emit("registerUser", user.displayName);
+    if (clientUid && clientDisplayName) {
+      const register = async () => {
+        let token = null;
+        if (user) {
+          try {
+            token = await user.getIdToken(true);
+          } catch (err) {
+            console.error("Error fetching Firebase ID token:", err);
+          }
+        }
+        socket.emit("registerUser", { uid: clientUid, displayName: clientDisplayName, token });
       };
 
       // Register immediately if already connected
@@ -133,7 +154,7 @@ function App() {
         socket.off("loginConflict", handleLoginConflict);
       };
     }
-  }, [user, logout]);
+  }, [clientUid, clientDisplayName, user, logout]);
 
 
 
@@ -214,7 +235,7 @@ function App() {
   const [resumedGameState, setResumedGameState] = useState(null);
   const [opponentLeft, setOpponentLeft] = useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
-  const [disconnectTimeLeft, setDisconnectTimeLeft] = useState(15);
+  const [disconnectTimeLeft, setDisconnectTimeLeft] = useState(45);
   const disconnectTimerRef = useRef(null);
   const [tournamentState, setTournamentState] = useState(() => {
     try {
@@ -440,7 +461,6 @@ function App() {
   // Reconnect warning countdown timer
   useEffect(() => {
     if (opponentDisconnected) {
-      setDisconnectTimeLeft(15);
       disconnectTimerRef.current = setInterval(() => {
         setDisconnectTimeLeft(prev => {
           if (prev <= 1) {
@@ -467,8 +487,13 @@ function App() {
   useEffect(() => {
     if (playStyle !== "online") return;
 
-    const onOpponentDisconnected = () => {
+    const onOpponentDisconnected = (data) => {
       setOpponentDisconnected(true);
+      if (data && data.timeLeft) {
+        setDisconnectTimeLeft(data.timeLeft);
+      } else {
+        setDisconnectTimeLeft(45);
+      }
     };
 
     const onOpponentReconnected = () => {
@@ -495,10 +520,18 @@ function App() {
   useEffect(() => {
     if (playStyle !== "online") return;
 
-    const handleReconnect = () => {
+    const handleReconnect = async () => {
       const roomId = localStorage.getItem("roomId");
-      if (roomId && user && user.displayName) {
-        socket.emit("reconnectRoom", { roomId, username: user.displayName });
+      if (roomId && clientUid && clientDisplayName) {
+        let token = null;
+        if (user) {
+          try {
+            token = await user.getIdToken(true);
+          } catch (err) {
+            console.error("Error fetching ID token for reconnect:", err);
+          }
+        }
+        socket.emit("reconnectRoom", { roomId, uid: clientUid, displayName: clientDisplayName, token });
       }
     };
 
@@ -510,7 +543,7 @@ function App() {
     return () => {
       socket.off("connect", handleReconnect);
     };
-  }, [playStyle, user]);
+  }, [playStyle, clientUid, clientDisplayName, user]);
 
   // Auto-enter fullscreen and landscape lock ONLY when active gameplay board starts
   useEffect(() => {
