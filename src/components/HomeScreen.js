@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ACHIEVEMENTS } from "../achievements";
 
 function HomeScreen({
     setGameMode,
@@ -14,7 +15,8 @@ function HomeScreen({
     user,
     isGuest,
     onSignOut,
-    savedGameState
+    savedGameState,
+    unlockedIds = {}
 }) {
     const [selectedBaseMode, setSelectedBaseMode] = useState(null);
     const [showProfile, setShowProfile] = useState(false);
@@ -64,12 +66,39 @@ function HomeScreen({
                             </div>
                         </div>
                         <div className="profile-dropdown-divider" />
+                        {/* Achievements Panel */}
+                        <div style={{ padding: "10px 14px" }}>
+                            <div style={{ fontSize: "12px", color: "#aaa", fontWeight: "bold", marginBottom: "8px", letterSpacing: "0.05em" }}>🏅 ACHIEVEMENTS</div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+                                {ACHIEVEMENTS.map(badge => {
+                                    const isUnlocked = !!unlockedIds[badge.id];
+                                    return (
+                                        <div
+                                            key={badge.id}
+                                            title={badge.label + " — " + badge.description}
+                                            style={{
+                                                textAlign: "center", padding: "8px 4px", borderRadius: "10px",
+                                                background: isUnlocked ? "rgba(255,215,0,0.12)" : "rgba(255,255,255,0.04)",
+                                                border: isUnlocked ? "1px solid rgba(255,215,0,0.35)" : "1px solid rgba(255,255,255,0.06)",
+                                                cursor: "default", transition: "all 0.2s"
+                                            }}
+                                        >
+                                            <div style={{ fontSize: "22px", filter: isUnlocked ? "none" : "grayscale(1) opacity(0.4)" }}>{badge.emoji}</div>
+                                            <div style={{ fontSize: "9px", color: isUnlocked ? "#ffd700" : "#555", marginTop: "4px", lineHeight: 1.2, fontWeight: isUnlocked ? "bold" : "normal" }}>
+                                                {badge.label}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="profile-dropdown-divider" />
                         {!isGuest && user ? (
                             <button
                                 className="profile-signout-btn"
                                 onClick={() => { setShowProfile(false); onSignOut(); }}
                             >
-                                🚪 Sign Out
+                                🚦 Sign Out
                             </button>
                         ) : (
                             <button
@@ -202,7 +231,15 @@ function HomeScreen({
                         <span className="mode-tag">Road to the Trophy</span>
                         <p>Select your team and play a 9-match season with Playoffs.</p>
                         <div className="mode-actions">
-                            <button className="play-btn" onClick={() => setSelectedBaseMode("tournament")}>Play</button>
+                            <button
+                                className="play-btn"
+                                onClick={() => {
+                                    setPlayStyle("ai");
+                                    setGameMode("tournament");
+                                }}
+                            >
+                                Play
+                            </button>
                             <button className="rules-btn" onClick={() => setRulesMode("tournament")}>Rules</button>
                         </div>
                     </div>

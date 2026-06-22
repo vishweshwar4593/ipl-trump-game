@@ -34,6 +34,7 @@ function GameBoard({
     weather,
     moisture,
     playerSwapUsed,
+    playerSwapsLeft,
     swapModalOpen,
     setSwapModalOpen,
     swapCandidates,
@@ -43,7 +44,9 @@ function GameBoard({
     handleOpenPlayerSwap,
     executePlayerSwap,
     overAnnouncement,
-    swapTimer
+    swapTimer,
+    playerTeam,
+    aiTeam
 }) {
 
     // ✅ ADD THIS LINE
@@ -92,7 +95,7 @@ function GameBoard({
                     moisture={moisture}
                     swapGraceActive={swapGraceActive}
                 />
-                <p>Player 1 Cards: {playerDeck.length}</p>
+                <p>{playStyle === "ai_vs_ai" ? `${playerTeam} Cards` : "Player 1 Cards"}: {playerDeck.length}</p>
                 
                 {/* Swap Button */}
                 {!isMultiplayerMode && (
@@ -105,10 +108,16 @@ function GameBoard({
                                 (gameMode === "tournament" ? playerDeck.length === 0 : playerDeck.length < 3) || 
                                 turn !== "player" || 
                                 selectedStat !== null || 
-                                animate
+                                animate ||
+                                playStyle === "ai_vs_ai"
                             }
                         >
-                            {playerSwapUsed ? "❌ Swap Used" : "🔄 Tactical Swap"}
+                            {playerSwapUsed 
+                                ? "❌ No Swaps Left" 
+                                : gameMode === "tournament"
+                                    ? `🔄 Tactical Swap ×${playerSwapsLeft ?? 1}`
+                                    : "🔄 Tactical Swap"
+                            }
                         </button>
                     </div>
                 )}
@@ -160,7 +169,7 @@ function GameBoard({
                     moisture={moisture}
                     swapGraceActive={swapGraceActive}
                 />
-                <p>{isMultiplayerMode ? "Player 2 Cards" : playStyle === "online" ? "Opponent Cards" : "AI Cards"}: {aiDeck.length}</p>
+                <p>{playStyle === "ai_vs_ai" ? `${aiTeam} Cards` : (isMultiplayerMode ? "Player 2 Cards" : playStyle === "online" ? "Opponent Cards" : "AI Cards")}: {aiDeck.length}</p>
             </div>
 
             {/* Announcement Toast */}

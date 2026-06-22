@@ -20,7 +20,9 @@ function GameHeader({
   gameMode,
   pitchCondition,
   weather,
-  moisture
+  moisture,
+  playerTeam,
+  aiTeam
 }) {
   // logout is available if needed in future; mid-game we route through handleHomeClick
   const { logout } = useAuth(); // eslint-disable-line no-unused-vars
@@ -72,13 +74,15 @@ function GameHeader({
         <h2>Round: {round}</h2>
         <h3>
           Turn:{" "}
-          {playStyle === "online"
-            ? (turn === "player" ? "You" : "Opponent")
-            : turn === "player"
-              ? "Player 1"
-              : isMultiplayerMode
-                ? "Player 2"
-                : "AI"}
+          {playStyle === "ai_vs_ai"
+            ? (turn === "player" ? playerTeam : aiTeam)
+            : playStyle === "online"
+              ? (turn === "player" ? "You" : "Opponent")
+              : turn === "player"
+                ? "Player 1"
+                : isMultiplayerMode
+                  ? "Player 2"
+                  : "AI"}
         </h3>
 
         {isTimeMode && (

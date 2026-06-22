@@ -19,6 +19,7 @@ import { useAuth } from "./context/AuthContext";
 import TournamentMode from "./modes/TournamentMode";
 import { ref, get, set, remove } from "firebase/database";
 import { database } from "./firebase";
+import { useAchievements } from "./hooks/useAchievements";
 
 
 export const STAT_WEIGHTS = {
@@ -36,12 +37,27 @@ export const STAT_WEIGHTS = {
   catches: 1.0
 };
 
+export const TEAM_RATINGS = {
+  "chennai super kings": 88,
+  "mumbai indians": 87,
+  "royal challengers bengaluru": 85,
+  "kolkata knight riders": 86,
+  "delhi capitals": 82,
+  "sunrisers hyderabad": 84,
+  "rajasthan royals": 84,
+  "punjab kings": 80,
+  "lucknow super giants": 81,
+  "gujarat titans": 82
+};
+
 function App() {
   const { isMuted, toggleMute, playClick, playWin, playLose, playHit } = useGameAudio();
   const { user: authUser, logout } = useAuth();
   const [user, setUser] = useState(undefined);
   const [isGuest, setIsGuest] = useState(false);
   const [loginConflict, setLoginConflict] = useState(false);
+  // Hall of Fame state
+  const [hallOfFame, setHallOfFame] = useState([]);
 
   useEffect(() => {
     if (authUser === undefined) {
@@ -122,6 +138,10 @@ function App() {
 
 
   const [savedGameState, setSavedGameState] = useState(null);
+  const [activeTournamentMatch, setActiveTournamentMatch] = useState(null);
+
+  // Achievement system
+  const { unlockedIds, newToast, dismissToast, checkAndUnlock } = useAchievements({ user, isGuest });
 
   // Asynchronously fetch cloud saves from Firebase Realtime Database on user login
   useEffect(() => {
@@ -148,6 +168,11 @@ function App() {
         } else {
           setTournamentState(null);
         }
+
+        // Load Hall of Fame
+        const hofRef = ref(database, `users/${user.uid}/hallOfFame`);
+        const hofSnap = await get(hofRef);
+        setHallOfFame(hofSnap.exists() ? (hofSnap.val() || []) : []);
       } catch (err) {
         console.error("Error loading data from Firebase Realtime Database:", err);
       }
@@ -165,6 +190,10 @@ function App() {
 
         const tourStr = localStorage.getItem("savedTournamentState");
         setTournamentState(tourStr ? JSON.parse(tourStr) : null);
+
+        // Load Hall of Fame for guest
+        const hofStr = localStorage.getItem("ipl_hall_of_fame");
+        setHallOfFame(hofStr ? JSON.parse(hofStr) : []);
       } catch (err) {
         console.error("Error loading LocalStorage fallback for guest:", err);
       }
@@ -196,6 +225,8 @@ function App() {
     }
   });
 
+  const [hasUnlockedAchievementsForMatch, setHasUnlockedAchievementsForMatch] = useState(false);
+
   const isBattleMode = gameMode === "battle";
   const isMultiplayerMode = playStyle === "local";
   const MAX_HP = 500;
@@ -207,7 +238,7 @@ function App() {
     playerHP, aiHP, turnTimerKey, gameOver, setGameOver,
     player, ai, handleStatClick, TURN_TIMEOUT, pitchCondition, setPitchCondition,
     weather, setWeather, moisture, setMoisture,
-    playerSwapUsed,
+    playerSwapUsed, playerSwapsLeft,
     swapModalOpen, setSwapModalOpen,
     swapCandidates,
     swapAnnouncement,
@@ -216,7 +247,9 @@ function App() {
     handleOpenPlayerSwap,
     executePlayerSwap,
     overAnnouncement,
-    swapTimer
+    swapTimer,
+    statHistory,
+    wasEverBehind
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
     playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole,
@@ -248,6 +281,124 @@ function App() {
     const secs = seconds % 60;
     return `${minutes}:${secs < 10 ? "0" : ""}${secs}`;
   }, []);
+
+  // Reset achievements checked flag when a new game starts (both decks have cards)
+  useEffect(() => {
+    if (playerDeck && playerDeck.length > 0 && aiDeck && aiDeck.length > 0) {
+      setHasUnlockedAchievementsForMatch(false);
+    }
+  }, [playerDeck, aiDeck]);
+
+  // Check achievements once at the end of a match
+  useEffect(() => {
+    if (hasUnlockedAchievementsForMatch) return;
+
+    // Condition 1: Time Mode game over
+    if (isTimeMode && gameOver) {
+      const isPlayerWin = playerDeck.length > aiDeck.length;
+      if (isPlayerWin) {
+        checkAndUnlock({
+          type: "match_end",
+          isWin: true,
+          gameMode: "time",
+          margin: playerDeck.length - aiDeck.length,
+          timeLeft,
+          tournamentState: null,
+          wasEverBehind,
+          _user: user,
+          _isGuest: isGuest
+        });
+      }
+      setHasUnlockedAchievementsForMatch(true);
+      return;
+    }
+
+    // Condition 2: Battle Mode game over
+    if (isBattleMode) {
+      if (playerHP <= 0) {
+        checkAndUnlock({
+          type: "match_end",
+          isWin: false,
+          gameMode: "battle",
+          margin: 0,
+          timeLeft: 0,
+          tournamentState: null,
+          wasEverBehind,
+          _user: user,
+          _isGuest: isGuest
+        });
+        setHasUnlockedAchievementsForMatch(true);
+        return;
+      }
+      if (aiHP <= 0) {
+        checkAndUnlock({
+          type: "match_end",
+          isWin: true,
+          gameMode: "battle",
+          margin: 0,
+          timeLeft: 0,
+          tournamentState: null,
+          wasEverBehind,
+          _user: user,
+          _isGuest: isGuest
+        });
+        setHasUnlockedAchievementsForMatch(true);
+        return;
+      }
+    }
+
+    // Condition 3: Regular offline match ended (deck size 0)
+    if (playStyle !== "online" && gameMode && gameMode !== "tournament" && (playerDeck.length === 0 || aiDeck.length === 0)) {
+      const isPlayerWin = aiDeck.length === 0;
+      checkAndUnlock({
+        type: "match_end",
+        isWin: isPlayerWin,
+        gameMode,
+        margin: Math.abs(playerDeck.length - aiDeck.length),
+        timeLeft: 0,
+        tournamentState: null,
+        wasEverBehind,
+        _user: user,
+        _isGuest: isGuest
+      });
+      setHasUnlockedAchievementsForMatch(true);
+      return;
+    }
+
+    // Condition 4: Regular online match ended (deck size 0)
+    if (playStyle === "online" && gameMode && gameMode !== "tournament" && (playerDeck.length === 0 || aiDeck.length === 0)) {
+      const isPlayerWin = aiDeck.length === 0;
+      checkAndUnlock({
+        type: "match_end",
+        isWin: isPlayerWin,
+        gameMode,
+        margin: Math.abs(playerDeck.length - aiDeck.length),
+        timeLeft: 0,
+        tournamentState: null,
+        wasEverBehind,
+        _user: user,
+        _isGuest: isGuest
+      });
+      setHasUnlockedAchievementsForMatch(true);
+      return;
+    }
+  }, [
+    hasUnlockedAchievementsForMatch,
+    isTimeMode,
+    gameOver,
+    playerDeck?.length,
+    aiDeck?.length,
+    timeLeft,
+    isBattleMode,
+    playerHP,
+    aiHP,
+    playStyle,
+    gameMode,
+    wasEverBehind,
+    user,
+    isGuest,
+    checkAndUnlock
+  ]);
 
   // ✅ FIX: timeLeft removed from dep array — a single stable interval is created
   // for the duration of the game. The boundary check happens inside the setter
@@ -517,132 +668,45 @@ function App() {
     if (!tournamentState) return;
 
     const state = { ...tournamentState };
-    const { playerTeam, pointsTable, schedule, currentRoundIndex, stage, playoffs } = state;
+    const { playerTeam: globalPlayerTeam, pointsTable, stage, playoffs } = state;
     
-    // Determine opponent team
-    const oppTeam = aiTeam;
-    if (!oppTeam) return;
-
-    const TEAM_RATINGS_LOCAL = {
-      "chennai super kings": 88,
-      "mumbai indians": 87,
-      "royal challengers bengaluru": 85,
-      "kolkata knight riders": 86,
-      "delhi capitals": 82,
-      "sunrisers hyderabad": 84,
-      "rajasthan royals": 84,
-      "punjab kings": 80,
-      "lucknow super giants": 81,
-      "gujarat titans": 82
-    };
+    if (!activeTournamentMatch) return;
 
     if (stage === "league") {
-      // 1. Update standings for player match
+      const { roundIndex, matchIndex } = activeTournamentMatch;
+      const match = state.schedule[roundIndex][matchIndex];
+      
+      match.played = true;
+      match.winner = isPlayerWin ? match.home : match.away;
+      match.loser = isPlayerWin ? match.away : match.home;
+      match.margin = isPlayerWin ? playerDeck.length : aiDeck.length;
+
       const pTable = { ...pointsTable };
-      
-      pTable[playerTeam].played += 1;
-      pTable[oppTeam].played += 1;
-      
-      const margin = isPlayerWin ? playerDeck.length : aiDeck.length;
+      pTable[match.home].played += 1;
+      pTable[match.away].played += 1;
       
       if (isPlayerWin) {
-        pTable[playerTeam].won += 1;
-        pTable[playerTeam].points += 2;
-        pTable[playerTeam].ncd = (pTable[playerTeam].ncd || 0) + margin;
-        pTable[oppTeam].lost += 1;
-        pTable[oppTeam].ncd = (pTable[oppTeam].ncd || 0) - margin;
+        pTable[match.home].won += 1;
+        pTable[match.home].points += 2;
+        pTable[match.home].ncd = (pTable[match.home].ncd || 0) + match.margin;
+        pTable[match.away].lost += 1;
+        pTable[match.away].ncd = (pTable[match.away].ncd || 0) - match.margin;
       } else {
-        pTable[oppTeam].won += 1;
-        pTable[oppTeam].points += 2;
-        pTable[oppTeam].ncd = (pTable[oppTeam].ncd || 0) + margin;
-        pTable[playerTeam].lost += 1;
-        pTable[playerTeam].ncd = (pTable[playerTeam].ncd || 0) - margin;
+        pTable[match.away].won += 1;
+        pTable[match.away].points += 2;
+        pTable[match.away].ncd = (pTable[match.away].ncd || 0) + match.margin;
+        pTable[match.home].lost += 1;
+        pTable[match.home].ncd = (pTable[match.home].ncd || 0) - match.margin;
       }
-
-      // 2. Simulate the other 4 matches of this round
-      const currentMatches = schedule[currentRoundIndex];
-      currentMatches.forEach(match => {
-        const isPlayerMatch = match.home === playerTeam || match.away === playerTeam;
-        if (!isPlayerMatch) {
-          // Simulate
-          const ratingHome = TEAM_RATINGS_LOCAL[match.home.toLowerCase()] || 80;
-          const ratingAway = TEAM_RATINGS_LOCAL[match.away.toLowerCase()] || 80;
-          const probHome = ratingHome / (ratingHome + ratingAway);
-          const homeWins = Math.random() < probHome;
-          
-          pTable[match.home].played += 1;
-          pTable[match.away].played += 1;
-          
-          const simMargin = Math.floor(Math.random() * 5) + 1;
-          
-          if (homeWins) {
-            pTable[match.home].won += 1;
-            pTable[match.home].points += 2;
-            pTable[match.home].ncd = (pTable[match.home].ncd || 0) + simMargin;
-            pTable[match.away].lost += 1;
-            pTable[match.away].ncd = (pTable[match.away].ncd || 0) - simMargin;
-          } else {
-            pTable[match.away].won += 1;
-            pTable[match.away].points += 2;
-            pTable[match.away].ncd = (pTable[match.away].ncd || 0) + simMargin;
-            pTable[match.home].lost += 1;
-            pTable[match.home].ncd = (pTable[match.home].ncd || 0) - simMargin;
-          }
-        }
-      });
 
       state.pointsTable = pTable;
 
-      // 3. Advance round or transition to Playoffs
-      if (currentRoundIndex < 8) {
-        state.currentRoundIndex += 1;
-      } else {
-        // League finished! Check Top 4
-        const sorted = Object.keys(pTable)
-          .map(team => ({ name: team, ...pTable[team] }))
-          .sort((a, b) => {
-            if (b.points !== a.points) return b.points - a.points;
-            const aNCD = a.ncd || 0;
-            const bNCD = b.ncd || 0;
-            if (bNCD !== aNCD) return bNCD - aNCD;
-            if (b.won !== a.won) return b.won - a.won;
-            return a.name.localeCompare(b.name);
-          });
-        
-        const top4 = sorted.slice(0, 4).map(t => t.name);
-        const playerIndex = top4.indexOf(playerTeam);
-        
-        if (playerIndex === -1) {
-          // Player eliminated
-          state.stage = "eliminated";
-        } else {
-          // Playoff assignments
-          const [team1, team2, team3, team4] = top4;
-          state.stage = "playoffs";
-          state.playoffs = {
-            q1: { home: team1, away: team2, played: false, winner: null, loser: null },
-            elim: { home: team3, away: team4, played: false, winner: null },
-            q2: { home: null, away: null, played: false, winner: null },
-            final: { home: null, away: null, played: false, winner: null }
-          };
-        }
-      }
     } else if (stage === "playoffs" && playoffs) {
-      // Handle playoff match end
       const play = { ...playoffs };
-      let activePlayoffKey = null;
+      const { playoffKey } = activeTournamentMatch;
+      const oppTeam = aiTeam;
 
-      if (play.q1.home && !play.q1.played && (play.q1.home === playerTeam || play.q1.away === playerTeam)) {
-        activePlayoffKey = "q1";
-      } else if (play.elim.home && !play.elim.played && (play.elim.home === playerTeam || play.elim.away === playerTeam)) {
-        activePlayoffKey = "elim";
-      } else if (play.q2.home && !play.q2.played && (play.q2.home === playerTeam || play.q2.away === playerTeam)) {
-        activePlayoffKey = "q2";
-      } else if (play.final.home && !play.final.played && (play.final.home === playerTeam || play.final.away === playerTeam)) {
-        activePlayoffKey = "final";
-      }
-
-      if (activePlayoffKey === "q1") {
+      if (playoffKey === "q1") {
         play.q1.played = true;
         if (isPlayerWin) {
           play.q1.winner = playerTeam;
@@ -652,78 +716,59 @@ function App() {
           play.q1.loser = playerTeam;
         }
 
-        // Simulate Eliminator
-        play.elim.played = true;
-        const elimProb = (TEAM_RATINGS_LOCAL[play.elim.home.toLowerCase()] || 80) / ((TEAM_RATINGS_LOCAL[play.elim.home.toLowerCase()] || 80) + (TEAM_RATINGS_LOCAL[play.elim.away.toLowerCase()] || 80));
-        const elimHomeWins = Math.random() < elimProb;
-        play.elim.winner = elimHomeWins ? play.elim.home : play.elim.away;
-
-        // Schedule Q2
-        play.q2.home = play.q1.loser;
-        play.q2.away = play.elim.winner;
-
-      } else if (activePlayoffKey === "elim") {
+      } else if (playoffKey === "elim") {
         play.elim.played = true;
         if (isPlayerWin) {
           play.elim.winner = playerTeam;
         } else {
           play.elim.winner = oppTeam;
-          state.stage = "eliminated"; // Player lost Eliminator -> eliminated
+          if (playerTeam === globalPlayerTeam) {
+            state.stage = "eliminated";
+          }
         }
 
-        // Simulate Q1
-        play.q1.played = true;
-        const q1Prob = (TEAM_RATINGS_LOCAL[play.q1.home.toLowerCase()] || 80) / ((TEAM_RATINGS_LOCAL[play.q1.home.toLowerCase()] || 80) + (TEAM_RATINGS_LOCAL[play.q1.away.toLowerCase()] || 80));
-        const q1HomeWins = Math.random() < q1Prob;
-        if (q1HomeWins) {
-          play.q1.winner = play.q1.home;
-          play.q1.loser = play.q1.away;
-        } else {
-          play.q1.winner = play.q1.away;
-          play.q1.loser = play.q1.home;
-        }
-
-        // Schedule Q2
-        play.q2.home = play.q1.loser;
-        play.q2.away = play.elim.winner;
-
-      } else if (activePlayoffKey === "q2") {
+      } else if (playoffKey === "q2") {
         play.q2.played = true;
         if (isPlayerWin) {
           play.q2.winner = playerTeam;
-          // Schedule Final
           play.final.home = play.q1.winner;
           play.final.away = playerTeam;
         } else {
           play.q2.winner = oppTeam;
-          state.stage = "eliminated"; // Player lost Q2 -> eliminated
+          if (playerTeam === globalPlayerTeam) {
+            state.stage = "eliminated";
+          }
         }
 
-      } else if (activePlayoffKey === "final") {
+      } else if (playoffKey === "final") {
         play.final.played = true;
         if (isPlayerWin) {
           play.final.winner = playerTeam;
-          state.stage = "champion";
+          if (playerTeam === globalPlayerTeam) {
+            state.stage = "champion";
+          } else {
+            state.stage = "eliminated";
+          }
         } else {
           play.final.winner = oppTeam;
-          state.stage = "eliminated"; // Player lost Final -> eliminated
+          if (oppTeam === globalPlayerTeam) {
+            state.stage = "champion";
+          } else {
+            state.stage = "eliminated";
+          }
         }
       }
 
-      // Check if we need to simulate Q2 (if player won Q1, they wait in the Final while Q2 is played by others)
-      if (state.stage !== "eliminated" && state.stage !== "champion") {
-        const isPlayerInQ2 = play.q2.home === playerTeam || play.q2.away === playerTeam;
+      // Check if both Q1 and Eliminator are resolved, then schedule Q2!
+      if (play.q1.played && play.elim.played && !play.q2.played && !play.q2.home) {
+        play.q2.home = play.q1.loser;
+        play.q2.away = play.elim.winner;
+      }
 
-        if (play.q2.home && !play.q2.played && !isPlayerInQ2) {
-          play.q2.played = true;
-          const q2Prob = (TEAM_RATINGS_LOCAL[play.q2.home.toLowerCase()] || 80) / ((TEAM_RATINGS_LOCAL[play.q2.home.toLowerCase()] || 80) + (TEAM_RATINGS_LOCAL[play.q2.away.toLowerCase()] || 80));
-          const q2HomeWins = Math.random() < q2Prob;
-          play.q2.winner = q2HomeWins ? play.q2.home : play.q2.away;
-          
-          // Schedule Final
-          play.final.home = play.q1.winner;
-          play.final.away = play.q2.winner;
-        }
+      // Check if Q2 is resolved, then schedule the Grand Final!
+      if (play.q2.played && !play.final.played && !play.final.home) {
+        play.final.home = play.q1.winner;
+        play.final.away = play.q2.winner;
       }
 
       state.playoffs = play;
@@ -737,17 +782,261 @@ function App() {
       localStorage.setItem("savedTournamentState", JSON.stringify(state));
     }
 
+    // Fire achievement checks
+    const margin = isPlayerWin ? playerDeck.length : aiDeck.length;
+    checkAndUnlock({
+      type: "match_end",
+      isWin: isPlayerWin,
+      gameMode: "tournament",
+      margin,
+      timeLeft: 0,
+      tournamentState: state,
+      wasEverBehind,
+      _user: user,
+      _isGuest: isGuest,
+    });
+
+    // Write Hall of Fame if champion
+    if (state.stage === "champion") {
+      writeHallOfFameEntry(state);
+    }
+
     // Reset game match variables
     setPlayerTeam(null);
     setAiTeam(null);
     setIsOnlineGameStarted(false);
     setResumedGameState(null);
     setSavedGameState(null);
+    setActiveTournamentMatch(null);
+
     if (user && !isGuest) {
       const gameRef = ref(database, `users/${user.uid}/savedGameState`);
       remove(gameRef).catch(err => console.error("Error clearing cloud game save:", err));
     } else {
-      localStorage.removeItem("savedGameState"); // Clear single game save since this match is done
+      localStorage.removeItem("savedGameState");
+    }
+  };
+
+  const simulateLeagueMatch = (roundIdx, matchIdx) => {
+    if (!tournamentState) return;
+    const state = { ...tournamentState };
+    const match = state.schedule[roundIdx][matchIdx];
+
+    const ratingHome = TEAM_RATINGS[match.home.toLowerCase()] || 80;
+    const ratingAway = TEAM_RATINGS[match.away.toLowerCase()] || 80;
+    const probHome = ratingHome / (ratingHome + ratingAway);
+    const homeWins = Math.random() < probHome;
+
+    match.played = true;
+    match.winner = homeWins ? match.home : match.away;
+    match.loser = homeWins ? match.away : match.home;
+    match.margin = Math.floor(Math.random() * 5) + 1;
+
+    const pTable = { ...state.pointsTable };
+    pTable[match.home].played += 1;
+    pTable[match.away].played += 1;
+
+    if (homeWins) {
+      pTable[match.home].won += 1;
+      pTable[match.home].points += 2;
+      pTable[match.home].ncd = (pTable[match.home].ncd || 0) + match.margin;
+      pTable[match.away].lost += 1;
+      pTable[match.away].ncd = (pTable[match.away].ncd || 0) - match.margin;
+    } else {
+      pTable[match.away].won += 1;
+      pTable[match.away].points += 2;
+      pTable[match.away].ncd = (pTable[match.away].ncd || 0) + match.margin;
+      pTable[match.home].lost += 1;
+      pTable[match.home].ncd = (pTable[match.home].ncd || 0) - match.margin;
+    }
+    state.pointsTable = pTable;
+
+    setTournamentState(state);
+    if (user && !isGuest) {
+      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
+      set(tourRef, state).catch(err => console.error("Error saving simulated tournament to cloud:", err));
+    } else {
+      localStorage.setItem("savedTournamentState", JSON.stringify(state));
+    }
+  };
+
+  const simulateAllRemainingMatches = () => {
+    if (!tournamentState) return;
+    const state = { ...tournamentState };
+    const roundMatches = state.schedule[state.currentRoundIndex];
+    const pTable = { ...state.pointsTable };
+
+    roundMatches.forEach(match => {
+      const isPlayerMatch = match.home === state.playerTeam || match.away === state.playerTeam;
+      if (!match.played && !isPlayerMatch) {
+        const ratingHome = TEAM_RATINGS[match.home.toLowerCase()] || 80;
+        const ratingAway = TEAM_RATINGS[match.away.toLowerCase()] || 80;
+        const probHome = ratingHome / (ratingHome + ratingAway);
+        const homeWins = Math.random() < probHome;
+
+        match.played = true;
+        match.winner = homeWins ? match.home : match.away;
+        match.loser = homeWins ? match.away : match.home;
+        match.margin = Math.floor(Math.random() * 5) + 1;
+
+        pTable[match.home].played += 1;
+        pTable[match.away].played += 1;
+
+        if (homeWins) {
+          pTable[match.home].won += 1;
+          pTable[match.home].points += 2;
+          pTable[match.home].ncd = (pTable[match.home].ncd || 0) + match.margin;
+          pTable[match.away].lost += 1;
+          pTable[match.away].ncd = (pTable[match.away].ncd || 0) - match.margin;
+        } else {
+          pTable[match.away].won += 1;
+          pTable[match.away].points += 2;
+          pTable[match.away].ncd = (pTable[match.away].ncd || 0) + match.margin;
+          pTable[match.home].lost += 1;
+          pTable[match.home].ncd = (pTable[match.home].ncd || 0) - match.margin;
+        }
+      }
+    });
+
+    state.pointsTable = pTable;
+    setTournamentState(state);
+    if (user && !isGuest) {
+      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
+      set(tourRef, state).catch(err => console.error("Error saving simulated tournament to cloud:", err));
+    } else {
+      localStorage.setItem("savedTournamentState", JSON.stringify(state));
+    }
+  };
+
+  const advanceTournamentRound = () => {
+    if (!tournamentState) return;
+    const state = { ...tournamentState };
+
+    if (state.currentRoundIndex < 8) {
+      state.currentRoundIndex += 1;
+    } else {
+      // League finished! Check Top 4
+      const pTable = state.pointsTable;
+      const sorted = Object.keys(pTable)
+        .map(team => ({ name: team, ...pTable[team] }))
+        .sort((a, b) => {
+          if (b.points !== a.points) return b.points - a.points;
+          const aNCD = a.ncd || 0;
+          const bNCD = b.ncd || 0;
+          if (bNCD !== aNCD) return bNCD - aNCD;
+          if (b.won !== a.won) return b.won - a.won;
+          return a.name.localeCompare(b.name);
+        });
+
+      const top4 = sorted.slice(0, 4).map(t => t.name);
+      const playerIndex = top4.indexOf(state.playerTeam);
+
+      if (playerIndex === -1) {
+        state.stage = "eliminated";
+      } else {
+        const [team1, team2, team3, team4] = top4;
+        state.stage = "playoffs";
+        state.playoffs = {
+          q1: { home: team1, away: team2, played: false, winner: null, loser: null },
+          elim: { home: team3, away: team4, played: false, winner: null },
+          q2: { home: null, away: null, played: false, winner: null },
+          final: { home: null, away: null, played: false, winner: null }
+        };
+      }
+    }
+
+    setTournamentState(state);
+    if (user && !isGuest) {
+      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
+      set(tourRef, state).catch(err => console.error("Error saving advanced round to cloud:", err));
+    } else {
+      localStorage.setItem("savedTournamentState", JSON.stringify(state));
+    }
+  };
+
+  const simulatePlayoffMatch = (matchKey) => {
+    if (!tournamentState) return;
+    const state = { ...tournamentState };
+    const play = { ...state.playoffs };
+    const match = play[matchKey];
+
+    const ratingHome = TEAM_RATINGS[match.home.toLowerCase()] || 80;
+    const ratingAway = TEAM_RATINGS[match.away.toLowerCase()] || 80;
+    const probHome = ratingHome / (ratingHome + ratingAway);
+    const homeWins = Math.random() < probHome;
+
+    match.played = true;
+    match.winner = homeWins ? match.home : match.away;
+    if (matchKey === "q1") {
+      match.loser = homeWins ? match.away : match.home;
+    }
+
+    const isPlayerMatch = match.home === state.playerTeam || match.away === state.playerTeam;
+    const didPlayerLose = isPlayerMatch && (match.winner !== state.playerTeam);
+
+    if (didPlayerLose) {
+      if (matchKey === "elim" || matchKey === "q2" || matchKey === "final") {
+        state.stage = "eliminated";
+      }
+    }
+
+    if (matchKey === "final" && match.winner === state.playerTeam) {
+      state.stage = "champion";
+    }
+
+    if (play.q1.played && play.elim.played && !play.q2.played && !play.q2.home) {
+      play.q2.home = play.q1.loser;
+      play.q2.away = play.elim.winner;
+    }
+    if (play.q2.played && !play.final.played && !play.final.home) {
+      play.final.home = play.q1.winner;
+      play.final.away = play.q2.winner;
+    }
+
+    state.playoffs = play;
+    setTournamentState(state);
+    if (user && !isGuest) {
+      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
+      set(tourRef, state).catch(err => console.error("Error saving simulated playoff to cloud:", err));
+    } else {
+      localStorage.setItem("savedTournamentState", JSON.stringify(state));
+    }
+  };
+
+  // Helper: compute matchStats for the result screen
+  const buildMatchStats = (isPlayerWin) => ({
+    cardsWon: isPlayerWin ? playerDeck.length : aiDeck.length,
+    cardsLost: isPlayerWin ? aiDeck.length : playerDeck.length,
+    statHistory,
+    tournamentContext: tournamentState && activeTournamentMatch?.type === "league" ? {
+      roundIndex: activeTournamentMatch.roundIndex,
+      rank: (() => {
+        if (!tournamentState.pointsTable) return null;
+        const sorted = Object.keys(tournamentState.pointsTable)
+          .sort((a, b) => tournamentState.pointsTable[b].points - tournamentState.pointsTable[a].points);
+        return sorted.indexOf(tournamentState.playerTeam) + 1;
+      })(),
+      points: tournamentState.pointsTable?.[tournamentState.playerTeam]?.points ?? 0,
+    } : null,
+  });
+
+  // Helper: write a Hall of Fame entry when winning a tournament
+  const writeHallOfFameEntry = (state) => {
+    if (!state || state.stage !== "champion") return;
+    const record = state.pointsTable?.[state.playerTeam];
+    const entry = {
+      team: state.playerTeam,
+      date: new Date().toLocaleDateString("en-IN"),
+      leagueRecord: record ? `${record.won}W-${record.lost}L` : "9W-0L",
+      season: Date.now(),
+    };
+    const updated = [entry, ...hallOfFame].slice(0, 20); // keep last 20
+    setHallOfFame(updated);
+    if (user && !isGuest) {
+      const hofRef = ref(database, `users/${user.uid}/hallOfFame`);
+      set(hofRef, updated).catch(err => console.error("Error saving HoF:", err));
+    } else {
+      localStorage.setItem("ipl_hall_of_fame", JSON.stringify(updated));
     }
   };
 
@@ -820,6 +1109,7 @@ function App() {
         isGuest={isGuest}
         onSignOut={handleSignOut}
         savedGameState={savedGameState}
+        unlockedIds={unlockedIds}
       />
     );
   }
@@ -876,15 +1166,17 @@ function App() {
         setPlayStyle={setPlayStyle}
         tournamentState={tournamentState}
         setTournamentState={setTournamentState}
-        startMatch={(oppTeam, isOnline) => {
-          setPlayerTeam(tournamentState.playerTeam);
-          setAiTeam(oppTeam);
-          if (isOnline) {
-            setIsOnlineGameStarted(false);
-          } else {
-            // offline AI
-          }
+        startMatch={(teamA, teamB, modeStyle, matchInfo) => {
+          setPlayerTeam(teamA);
+          setAiTeam(teamB);
+          setPlayStyle(modeStyle);
+          setActiveTournamentMatch(matchInfo);
         }}
+        simulateLeagueMatch={simulateLeagueMatch}
+        simulateAllRemainingMatches={simulateAllRemainingMatches}
+        advanceTournamentRound={advanceTournamentRound}
+        simulatePlayoffMatch={simulatePlayoffMatch}
+        hallOfFame={hallOfFame}
       />
     );
   }
@@ -893,31 +1185,38 @@ function App() {
 
   if (isTimeMode && gameOver) {
     let resultTitle = "";
+    const isPlayerWin = playerDeck.length > aiDeck.length;
     if (playerDeck.length > aiDeck.length)
       resultTitle = playStyle === "online" ? "YOU WIN 🏆" : "PLAYER WINS 🏆 (Time Mode)";
     else if (aiDeck.length > playerDeck.length)
       resultTitle = playStyle === "online" ? "YOU LOSE 😢" : "AI WINS 😈 (Time Mode)";
     else resultTitle = "DRAW 🤝 (Time Mode)";
-    return <ResultScreen title={resultTitle} buttonText="Back to Home" onBack={clearSaveAndGoHome} />;
+    return <ResultScreen title={resultTitle} buttonText="Back to Home" onBack={clearSaveAndGoHome} matchStats={buildMatchStats(isPlayerWin)} />;
   }
 
-  if (isBattleMode && playerHP <= 0)
-    return <ResultScreen title={playStyle === "online" ? "YOU LOSE 😢" : "AI WINS 😈 (Battle Mode)"} buttonText="Back" onBack={clearSaveAndGoHome} />;
-  if (isBattleMode && aiHP <= 0)
-    return <ResultScreen title={playStyle === "online" ? "YOU WIN 🏆" : "PLAYER WINS 🏆 (Battle Mode)"} buttonText="Back" onBack={clearSaveAndGoHome} />;
+  if (isBattleMode && playerHP <= 0) {
+    return <ResultScreen title={playStyle === "online" ? "YOU LOSE 😢" : "AI WINS 😈 (Battle Mode)"} buttonText="Back" onBack={clearSaveAndGoHome} matchStats={buildMatchStats(false)} />;
+  }
+  if (isBattleMode && aiHP <= 0) {
+    return <ResultScreen title={playStyle === "online" ? "YOU WIN 🏆" : "PLAYER WINS 🏆 (Battle Mode)"} buttonText="Back" onBack={clearSaveAndGoHome} matchStats={buildMatchStats(true)} />;
+  }
 
   if (playStyle !== "online" && (playerDeck.length === 0 || aiDeck.length === 0)) {
     const isPlayerWin = aiDeck.length === 0;
     if (gameMode === "tournament") {
+      const isSpectator = playStyle === "ai_vs_ai";
+      const winTitle = isSpectator ? `${playerTeam} WINS! 🏆` : "MATCH WON! 🎉";
+      const loseTitle = isSpectator ? `${aiTeam} WINS! 🏆` : "MATCH LOST! 😢";
       return (
         <ResultScreen 
-          title={isPlayerWin ? "MATCH WON! 🎉" : "MATCH LOST! 😢"} 
+          title={isPlayerWin ? winTitle : loseTitle} 
           buttonText="Continue Standings" 
-          onBack={() => updateTournamentProgress(isPlayerWin)} 
+          onBack={() => updateTournamentProgress(isPlayerWin)}
+          matchStats={!isSpectator ? buildMatchStats(isPlayerWin) : undefined}
         />
       );
     }
-    return <ResultScreen title={isPlayerWin ? "PLAYER WINS 🏆" : "AI WINS 😈"} buttonText="Back to Home" onBack={clearSaveAndGoHome} />;
+    return <ResultScreen title={isPlayerWin ? "PLAYER WINS 🏆" : "AI WINS 😈"} buttonText="Back to Home" onBack={clearSaveAndGoHome} matchStats={buildMatchStats(isPlayerWin)} />;
   }
 
   if (playStyle === "online" && (playerDeck.length === 0 || aiDeck.length === 0)) {
@@ -927,11 +1226,12 @@ function App() {
         <ResultScreen 
           title={isPlayerWin ? "YOU WIN MATCH! 🎉" : "YOU LOSE MATCH! 😢"} 
           buttonText="Continue Standings" 
-          onBack={() => updateTournamentProgress(isPlayerWin)} 
+          onBack={() => updateTournamentProgress(isPlayerWin)}
+          matchStats={buildMatchStats(isPlayerWin)}
         />
       );
     }
-    return <ResultScreen title={isPlayerWin ? "YOU WIN 🏆" : "YOU LOSE 😢"} buttonText="Back to Home" onBack={clearSaveAndGoHome} />;
+    return <ResultScreen title={isPlayerWin ? "YOU WIN 🏆" : "YOU LOSE 😢"} buttonText="Back to Home" onBack={clearSaveAndGoHome} matchStats={buildMatchStats(isPlayerWin)} />;
   }
 
   return (
@@ -1017,6 +1317,8 @@ function App() {
           pitchCondition={pitchCondition}
           weather={weather}
           moisture={moisture}
+          playerTeam={playerTeam}
+          aiTeam={aiTeam}
         />
 
         {player && ai ? (
@@ -1050,6 +1352,7 @@ function App() {
             weather={weather}
             moisture={moisture}
             playerSwapUsed={playerSwapUsed}
+            playerSwapsLeft={playerSwapsLeft}
             swapModalOpen={swapModalOpen}
             setSwapModalOpen={setSwapModalOpen}
             swapCandidates={swapCandidates}
@@ -1060,6 +1363,8 @@ function App() {
             executePlayerSwap={executePlayerSwap}
             overAnnouncement={overAnnouncement}
             swapTimer={swapTimer}
+            playerTeam={playerTeam}
+            aiTeam={aiTeam}
           />
         ) : (
           <div className="loading">Checking winner...</div>
@@ -1070,6 +1375,17 @@ function App() {
           roomId={localStorage.getItem("roomId")} 
         />
       </div>
+
+      {/* Achievement Badge Toast */}
+      {newToast && (
+        <div className="achievement-toast" onClick={dismissToast}>
+          <div className="achievement-toast-icon">{newToast.emoji}</div>
+          <div className="achievement-toast-body">
+            <div className="achievement-toast-title">Achievement Unlocked!</div>
+            <div className="achievement-toast-label">{newToast.label}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

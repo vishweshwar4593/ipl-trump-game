@@ -184,12 +184,14 @@ const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, anim
                 }
               }
 
-              const isUserTurn = playStyle === "online"
-                ? (type === "player" && turn === "player")
-                : (
-                  (type === "player" && turn === "player") ||
-                  (isMultiplayerMode && type === "ai" && turn === "ai")
-                );
+              const isUserTurn = playStyle === "ai_vs_ai"
+                ? false
+                : playStyle === "online"
+                  ? (type === "player" && turn === "player")
+                  : (
+                    (type === "player" && turn === "player") ||
+                    (isMultiplayerMode && type === "ai" && turn === "ai")
+                  );
 
               const isClickable = isUserTurn && !selectedStat && eligible && !swapGraceActive;
 
@@ -217,19 +219,21 @@ const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, anim
           </div>
 
           <div className="footer">
-            {type === "player"
-              ? turn === "player"
-                ? isMultiplayerMode
-                  ? "Player 1 Turn"
-                  : "Your Turn"
-                : "Wait..."
-              : turn === "ai"
-                ? isMultiplayerMode
-                  ? "Player 2 Turn"
-                  : playStyle === "online"
-                    ? "Opponent's Turn"
-                    : "AI Thinking..."
-                : "Waiting..."
+            {playStyle === "ai_vs_ai"
+              ? (turn === type ? `${player?.team} Turn` : "Wait...")
+              : type === "player"
+                ? turn === "player"
+                  ? isMultiplayerMode
+                    ? "Player 1 Turn"
+                    : "Your Turn"
+                  : "Wait..."
+                : turn === "ai"
+                  ? isMultiplayerMode
+                    ? "Player 2 Turn"
+                    : playStyle === "online"
+                      ? "Opponent's Turn"
+                      : "AI Thinking..."
+                  : "Waiting..."
             }
           </div>
 

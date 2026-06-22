@@ -241,7 +241,8 @@ export function useGameEngine({
   const [playerHP, setPlayerHP] = useState(MAX_HP);
   const [aiHP, setAiHP] = useState(MAX_HP);
   const [turnTimerKey, setTurnTimerKey] = useState(0);
-  const [playerSwapUsed, setPlayerSwapUsed] = useState(false);
+  const [playerSwapsLeft, setPlayerSwapsLeft] = useState(1);
+  const playerSwapUsed = playerSwapsLeft <= 0; // backwards-compat alias
   const [aiSwapUsed, setAiSwapUsed] = useState(false);
   const [swapModalOpen, setSwapModalOpen] = useState(false);
   const [swapCandidates, setSwapCandidates] = useState([]);
@@ -255,6 +256,10 @@ export function useGameEngine({
   const [swapTimer, setSwapTimer] = useState(5);
   const [consecutiveTurns, setConsecutiveTurns] = useState(1);
   const [overAnnouncement, setOverAnnouncement] = useState(null);
+  // Feature 3: stat history for post-match summary
+  const [statHistory, setStatHistory] = useState([]);
+  // Feature badges: track if player was ever behind (Survivor badge)
+  const [wasEverBehind, setWasEverBehind] = useState(false);
 
   const player = playerDeck[0];
   const ai = aiDeck[0];
@@ -345,7 +350,29 @@ export function useGameEngine({
   }, [swapGraceActive]);
 
   useEffect(() => {
-    if (!gameMode) return;
+    if (!gameMode) {
+      setPlayerDeck([]);
+      setAiDeck([]);
+      setPlayerFranchisePool([]);
+      setAiFranchisePool([]);
+      setTurn(null);
+      setRound(1);
+      setSelectedStat(null);
+      setWinner(null);
+      setDrawPile([]);
+      setPlayerHP(MAX_HP);
+      setAiHP(MAX_HP);
+      setPlayerSwapsLeft(1);
+      setAiSwapUsed(false);
+      setStatHistory([]);
+      setWasEverBehind(false);
+      setSwapModalOpen(false);
+      setSwapCandidates([]);
+      setSwapAnnouncement(null);
+      setGameOver(false);
+      setOverAnnouncement(null);
+      return;
+    }
     // For offline team mode, wait until both teams are chosen locally.
     // For online team mode, teams arrive with startGame so skip this guard.
     if (gameMode === "team" && playStyle !== "online" && (!playerTeam || !aiTeam)) return;
@@ -359,7 +386,7 @@ export function useGameEngine({
       setRound(resumedGameState.round);
       setPlayerHP(resumedGameState.playerHP);
       setAiHP(resumedGameState.aiHP);
-      setPlayerSwapUsed(resumedGameState.playerSwapUsed ?? false);
+      setPlayerSwapsLeft(resumedGameState.playerSwapUsed ? 0 : 1);
       setAiSwapUsed(resumedGameState.aiSwapUsed ?? false);
       setConsecutiveTurns(resumedGameState.consecutiveTurns ?? 1);
       setSelectedStat(null);
@@ -372,6 +399,9 @@ export function useGameEngine({
       setPlayerHP(MAX_HP);
       setAiHP(MAX_HP);
     }
+
+    // Set swap token count: always 1
+    setPlayerSwapsLeft(1);
 
     if (playStyle === "online") {
       // Decks are injected by OnlineMode via setPlayerDeck/setAiDeck when the
@@ -390,8 +420,9 @@ export function useGameEngine({
       if (tournamentState && tournamentState.stage === "playoffs" && tournamentState.playoffs) {
         const play = tournamentState.stage === "playoffs" ? tournamentState.playoffs : null;
         if (play) {
-          const playerTeamLocal = tournamentState.playerTeam;
-          const isFinalActive = play.final && play.final.home && !play.final.played && (play.final.home === playerTeamLocal || play.final.away === playerTeamLocal);
+          const isFinalActive = play.final && play.final.home && !play.final.played && 
+            (play.final.home === playerTeam || play.final.away === playerTeam || 
+             play.final.home === aiTeam || play.final.away === aiTeam);
           if (isFinalActive) {
             deckLimit = 11;
           } else {
@@ -429,8 +460,10 @@ export function useGameEngine({
     setWinner(null);
     setDrawPile([]);
     setConsecutiveTurns(1);
-    setPlayerSwapUsed(false);
+    setPlayerSwapsLeft(1);
     setAiSwapUsed(false);
+    setStatHistory([]);
+    setWasEverBehind(false);
     setSwapModalOpen(false);
     setSwapCandidates([]);
     setSwapAnnouncement(null);
@@ -668,8 +701,14 @@ const handleTurnTimeout = useCallback(() => {
 
     setTimeout(() => setAnimate(true), 500);
 
+    // Feature 3: record stat used and round result
+    setStatHistory(prev => [...prev, { stat, result }]);
+
     setTimeout(() => {
       if (result === "player") {
+        // Feature badges: if AI had more cards before, player was behind
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        setWasEverBehind(prev => prev || aiDeck.length > playerDeck.length);
         if (isBattleMode) setAiHP(prev => Math.max(prev - damage, 0));
         if (gameMode === "team" || gameMode === "tournament") {
           setPlayerDeck(prev => {
@@ -753,7 +792,7 @@ const handleTurnTimeout = useCallback(() => {
         setConsecutiveTurns(1);
       }
     }, 2000);
-  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode, round]);
+  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode, round, playerDeck, aiDeck]);
   // ✅ FIX 3: drawPile removed from deps — now read via drawPileRef to prevent stale closure
 
   // ✅ FIX 2: Keep a stable ref to the latest handleStatClick so the socket listener
@@ -873,7 +912,7 @@ const handleTurnTimeout = useCallback(() => {
   }, []);
 
   const handleOpenPlayerSwap = useCallback(() => {
-    if (isMultiplayerMode || playerSwapUsed || playerDeck.length === 0 || turn !== "player" || selectedStat !== null || animate || gameOver) return;
+    if (isMultiplayerMode || playerSwapsLeft <= 0 || playerDeck.length === 0 || turn !== "player" || selectedStat !== null || animate || gameOver) return;
     
     const pool = (gameMode === "team" || gameMode === "tournament") 
       ? playerFranchisePool 
@@ -883,10 +922,10 @@ const handleTurnTimeout = useCallback(() => {
     if (candidates.length < 1) return;
     setSwapCandidates(candidates);
     setSwapModalOpen(true);
-  }, [isMultiplayerMode, playerSwapUsed, playerDeck, playerFranchisePool, turn, selectedStat, animate, gameOver, gameMode, round, pitchCondition, weather, moisture]);
+  }, [isMultiplayerMode, playerSwapsLeft, playerDeck, playerFranchisePool, turn, selectedStat, animate, gameOver, gameMode, round, pitchCondition, weather, moisture]);
 
   const executePlayerSwap = useCallback((selectedCandidate) => {
-    if (playerSwapUsed || playerDeck.length === 0 || !selectedCandidate) return;
+    if (playerSwapsLeft <= 0 || playerDeck.length === 0 || !selectedCandidate) return;
     
     if (playStyle === "online") {
       const roomId = localStorage.getItem("roomId");
@@ -907,13 +946,13 @@ const handleTurnTimeout = useCallback(() => {
       setPlayerDeck([selectedCandidate, ...shuffledRemaining]);
     }
     
-    setPlayerSwapUsed(true);
+    setPlayerSwapsLeft(prev => Math.max(0, prev - 1));
     setSwapModalOpen(false);
     
     const discardMsg = (gameMode === "team" || gameMode === "tournament") ? " (Swapped card discarded)" : "";
     setSwapAnnouncement(`🔄 Tactical Swap: ${currentActiveCard.name} subbed for ${selectedCandidate.name}!${discardMsg}`);
     setTimeout(() => setSwapAnnouncement(null), 4000);
-  }, [playerSwapUsed, playerDeck, swapCandidates, gameMode, playStyle]);
+  }, [playerSwapsLeft, playerDeck, swapCandidates, gameMode, playStyle]);
 
   // Hook A: Handle card visibility and key resets when the active turn transitions
   useEffect(() => {
@@ -925,6 +964,12 @@ const handleTurnTimeout = useCallback(() => {
         setShowAiCard(false);
         // Only increment timer on your own turn (turn=player means local user's turn)
         if (turn === "player") setTurnTimerKey(prev => prev + 1);
+      }
+    } else if (playStyle === "ai_vs_ai") {
+      if (selectedStat === null) {
+        // Spectator mode: show both cards!
+        setShowPlayerCard(true);
+        setShowAiCard(true);
       }
     } else {
       if (turn === "player" && selectedStat === null) {
@@ -944,70 +989,94 @@ const handleTurnTimeout = useCallback(() => {
 
   // Hook B: AI decision and selection play logic
   useEffect(() => {
+    const isAITurn = (turn === "ai" && playStyle !== "online" && !isMultiplayerMode) ||
+                     (turn === "player" && playStyle === "ai_vs_ai");
+
     if (
-      playStyle !== "online" &&
-      !isMultiplayerMode &&
-      turn === "ai" &&
+      isAITurn &&
       !selectedStat &&
-      ai &&
       !gameOver &&
       !showConfirm
     ) {
+      const activeCard = turn === "player" ? player : ai;
+      if (!activeCard) return;
+
       // 1. AI waits for the 5-second swap grace period to finish
       if (swapGraceActive) {
         return;
       }
 
       // 2. Once the grace period is over, check if AI should swap
-      const shouldSwap = shouldAISwap(ai, round, pitchCondition, weather, moisture, aiSwapUsed, aiDeck.length);
-      
-      const pool = (gameMode === "team" || gameMode === "tournament") 
-        ? aiFranchisePool 
-        : aiDeck.slice(1);
+      const isPlayerTurn = turn === "player";
+      const swapUsed = isPlayerTurn ? (playerSwapsLeft <= 0) : aiSwapUsed;
+      const deck = isPlayerTurn ? playerDeck : aiDeck;
+      const franchisePool = isPlayerTurn ? playerFranchisePool : aiFranchisePool;
+
+      const shouldSwap = shouldAISwap(activeCard, round, pitchCondition, weather, moisture, swapUsed, deck.length);
+      const pool = (gameMode === "team" || gameMode === "tournament") ? franchisePool : deck.slice(1);
 
       if (shouldSwap && pool.length > 0) {
         const candidates = getClutchReplacements(pool, gameMode, round, pitchCondition, weather, moisture);
         if (candidates.length >= 1) {
-          const currentActive = aiDeck[0];
-          
+          const currentActive = activeCard;
           let selectedCandidate;
+
           if (gameMode === "team" || gameMode === "tournament") {
             selectedCandidate = candidates[0];
-            setAiFranchisePool(prevPool => prevPool.filter(c => c.name !== selectedCandidate.name));
-            setAiDeck(prevDeck => [selectedCandidate, ...prevDeck.slice(1)]);
+            if (isPlayerTurn) {
+              setPlayerFranchisePool(prevPool => prevPool.filter(c => c.name !== selectedCandidate.name));
+              setPlayerDeck(prevDeck => [selectedCandidate, ...prevDeck.slice(1)]);
+            } else {
+              setAiFranchisePool(prevPool => prevPool.filter(c => c.name !== selectedCandidate.name));
+              setAiDeck(prevDeck => [selectedCandidate, ...prevDeck.slice(1)]);
+            }
           } else {
             const score1 = getClutchReplacementsScore(candidates[0], gameMode, round, pitchCondition, weather, moisture);
             const score2 = candidates[1] ? getClutchReplacementsScore(candidates[1], gameMode, round, pitchCondition, weather, moisture) : -Infinity;
-            
+
             selectedCandidate = score1 >= score2 ? candidates[0] : candidates[1];
             const unselectedCandidate = score1 >= score2 ? candidates[1] : candidates[0];
-            
-            const remainingDeck = aiDeck.slice(1).filter(c => c.name !== selectedCandidate.name && c.name !== (unselectedCandidate ? unselectedCandidate.name : ""));
-            const shuffledRemaining = shuffle([...remainingDeck, currentActive, unselectedCandidate].filter(Boolean));
-            
-            setAiDeck([selectedCandidate, ...shuffledRemaining]);
+
+            if (isPlayerTurn) {
+              const remainingDeck = playerDeck.slice(1).filter(c => c.name !== selectedCandidate.name && c.name !== (unselectedCandidate ? unselectedCandidate.name : ""));
+              const shuffledRemaining = shuffle([...remainingDeck, currentActive, unselectedCandidate].filter(Boolean));
+              setPlayerDeck([selectedCandidate, ...shuffledRemaining]);
+            } else {
+              const remainingDeck = aiDeck.slice(1).filter(c => c.name !== selectedCandidate.name && c.name !== (unselectedCandidate ? unselectedCandidate.name : ""));
+              const shuffledRemaining = shuffle([...remainingDeck, currentActive, unselectedCandidate].filter(Boolean));
+              setAiDeck([selectedCandidate, ...shuffledRemaining]);
+            }
           }
-          
-          setAiSwapUsed(true);
-          
+
+          if (isPlayerTurn) {
+            setPlayerSwapsLeft(prev => Math.max(0, prev - 1));
+          } else {
+            setAiSwapUsed(true);
+          }
+
           const discardMsg = (gameMode === "team" || gameMode === "tournament") ? " (Swapped card discarded)" : "";
-          setSwapAnnouncement(`🔄 AI Tactical Swap: ${currentActive.name} subbed for ${selectedCandidate.name}!${discardMsg}`);
-          setTimeout(() => setSwapAnnouncement(null), 4500);
+          const swapMsg = isPlayerTurn 
+            ? `🔄 Team 1 Tactical Swap: ${currentActive.name} subbed for ${selectedCandidate.name}!${discardMsg}`
+            : `🔄 Team 2 Tactical Swap: ${currentActive.name} subbed for ${selectedCandidate.name}!${discardMsg}`;
           
+          setSwapAnnouncement(swapMsg);
+          setTimeout(() => setSwapAnnouncement(null), 4500);
+
           setTurnTimerKey(prev => prev + 1);
           return;
         }
       }
 
       // 3. Play stat normally
-      const bestStat = getBestStat(ai);
+      const bestStat = getBestStat(activeCard);
       const timer = setTimeout(() => {
         handleStatClick(bestStat);
-      }, 1000);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [
     turn,
+    player,
     ai,
     selectedStat,
     handleStatClick,
@@ -1021,8 +1090,11 @@ const handleTurnTimeout = useCallback(() => {
     pitchCondition,
     weather,
     moisture,
+    playerSwapsLeft,
     aiSwapUsed,
+    playerDeck,
     aiDeck,
+    playerFranchisePool,
     aiFranchisePool,
     showConfirm
   ]);
@@ -1091,7 +1163,7 @@ const handleTurnTimeout = useCallback(() => {
     pitchCondition, setPitchCondition,
     weather, setWeather,
     moisture, setMoisture,
-    playerSwapUsed, setPlayerSwapUsed,
+    playerSwapUsed, playerSwapsLeft, setPlayerSwapsLeft,
     aiSwapUsed, setAiSwapUsed,
     swapModalOpen, setSwapModalOpen,
     swapCandidates, setSwapCandidates,
@@ -1102,6 +1174,8 @@ const handleTurnTimeout = useCallback(() => {
     executePlayerSwap,
     consecutiveTurns, setConsecutiveTurns,
     overAnnouncement, setOverAnnouncement,
-    swapTimer, setSwapTimer
+    swapTimer, setSwapTimer,
+    statHistory,
+    wasEverBehind
   };
 }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import teamLogos from "../data/teamLogos";
 
 const FALLBACK_LOGO = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23cc2200'/><path d='M50 5 Q70 30 70 50 Q70 70 50 95 Q30 70 30 50 Q30 30 50 5Z' fill='%23aa1100'/><path d='M5 50 Q30 30 50 30 Q70 30 95 50 Q70 70 50 70 Q30 70 5 50Z' fill='%23aa1100'/><path d='M50 5 Q70 30 70 50 Q70 70 50 95' stroke='%23f5e6c8' stroke-width='2' fill='none'/><path d='M5 50 Q30 30 50 30 Q70 30 95 50' stroke='%23f5e6c8' stroke-width='2' fill='none'/></svg>`;
@@ -30,10 +30,39 @@ function TournamentMode({
   setPlayStyle,
   tournamentState,
   setTournamentState,
-  startMatch // App.js trigger: startMatch(opponentTeam, isOnline)
+  startMatch,
+  simulateLeagueMatch,
+  simulateAllRemainingMatches,
+  advanceTournamentRound,
+  simulatePlayoffMatch,
+  hallOfFame = []
 }) {
   const [activeTab, setActiveTab] = useState("table");
   const [resetContext, setResetContext] = useState(null); // null | "active_reset" | "new_campaign"
+  const [autoAdvance, setAutoAdvance] = useState(false);
+
+  // Auto-Advance: after player completes match, sim remaining + advance round automatically
+  useEffect(() => {
+    if (!autoAdvance || !tournamentState || tournamentState.stage !== "league") return;
+    const { schedule, currentRoundIndex, playerTeam } = tournamentState;
+    if (!schedule || !schedule[currentRoundIndex]) return;
+    const roundMatches = schedule[currentRoundIndex];
+    const playerMatch = roundMatches.find(m => m.home === playerTeam || m.away === playerTeam);
+    // Player match must be completed, but not all matches done yet
+    if (!playerMatch || !playerMatch.played) return;
+    const allDone = roundMatches.every(m => m.played);
+    if (allDone) {
+      // Auto-advance to next round after a brief delay
+      const t = setTimeout(() => advanceTournamentRound(), 800);
+      return () => clearTimeout(t);
+    } else {
+      // Simulate remaining matches, then advance
+      const t = setTimeout(() => {
+        simulateAllRemainingMatches();
+      }, 600);
+      return () => clearTimeout(t);
+    }
+  }, [tournamentState, autoAdvance, advanceTournamentRound, simulateAllRemainingMatches]);
 
   // Load state on mount if it exists, otherwise trigger franchise selection
   const selectFranchise = (team) => {
@@ -72,6 +101,55 @@ function TournamentMode({
     setTournamentState(null);
     localStorage.removeItem("savedTournamentState");
     setResetContext(null);
+  };
+
+  // Helper to render watch / play / simulate playoff match actions with lock checks
+  const renderPlayoffButtons = (matchKey, match) => {
+    if (!match || !match.home || !match.away || match.played) return null;
+    
+    let isUnlocked = true;
+    if (matchKey === "elim") {
+      isUnlocked = playoffs.q1.played;
+    } else if (matchKey === "q2") {
+      isUnlocked = playoffs.elim.played;
+    } else if (matchKey === "final") {
+      isUnlocked = playoffs.q2.played;
+    }
+
+    const isPlayerMatch = match.home === playerTeam || match.away === playerTeam;
+    if (isPlayerMatch) {
+      return (
+        <button 
+          className="play-btn" 
+          style={{ padding: "6px 12px", fontSize: "12px", width: "auto", margin: 0, height: "auto" }}
+          onClick={() => handleStartPlayoffMatch(matchKey, "ai")}
+          disabled={!isUnlocked}
+        >
+          {isUnlocked ? "🏏 Play" : "🔒 Locked"}
+        </button>
+      );
+    } else {
+      return (
+        <div style={{ display: "flex", gap: "6px" }}>
+          <button 
+            className="play-btn" 
+            style={{ padding: "6px 12px", fontSize: "12px", width: "auto", margin: 0, height: "auto" }}
+            onClick={() => handleStartPlayoffMatch(matchKey, "ai_vs_ai")}
+            disabled={!isUnlocked}
+          >
+            🤖 Watch
+          </button>
+          <button 
+            className="rules-btn" 
+            style={{ padding: "6px 12px", fontSize: "12px", width: "auto", margin: 0, height: "auto", borderColor: isUnlocked ? "#ffd700" : "#444", color: isUnlocked ? "#ffd700" : "#666" }}
+            onClick={() => simulatePlayoffMatch(matchKey)}
+            disabled={!isUnlocked}
+          >
+            ⚡ Sim
+          </button>
+        </div>
+      );
+    }
   };
 
   // If no team is selected, show franchise selector
@@ -139,6 +217,9 @@ function TournamentMode({
     ? (playerMatch.home === playerTeam ? playerMatch.away : playerMatch.home)
     : null;
 
+  const playerMatchIndex = playerMatch ? currentRoundMatches.indexOf(playerMatch) : -1;
+  const isPlayerMatchUnlocked = playerMatchIndex === 0 || (currentRoundMatches[playerMatchIndex - 1] && currentRoundMatches[playerMatchIndex - 1].played);
+
   // Sort teams for points table
   const sortedStandings = Object.keys(pointsTable)
     .map(team => ({
@@ -157,16 +238,18 @@ function TournamentMode({
   // Calculate current rank of player
   const playerRank = sortedStandings.findIndex(t => t.name === playerTeam) + 1;
 
-  const handleStartMatch = (playStyleOverride) => {
-    setPlayStyle(playStyleOverride);
-    startMatch(opponentTeam, playStyleOverride === "online");
+  const handleStartMatch = (teamA, teamB, modeStyle, matchInfo) => {
+    startMatch(teamA, teamB, modeStyle, matchInfo);
   };
 
-  const handleStartPlayoffMatch = (matchKey, playStyleOverride) => {
-    setPlayStyle(playStyleOverride);
-    const playoffMatch = playoffs[matchKey];
-    const playoffOpponent = playoffMatch.home === playerTeam ? playoffMatch.away : playoffMatch.home;
-    startMatch(playoffOpponent, playStyleOverride === "online");
+  const handleStartPlayoffMatch = (playoffKey, modeStyle) => {
+    const playoffMatch = playoffs[playoffKey];
+    // Always pass the campaign's playerTeam as teamA so the game engine
+    // correctly assigns cards — regardless of whether they are home or away.
+    const isPlayerHome = playoffMatch.home === playerTeam;
+    const teamA = isPlayerHome ? playoffMatch.home : playoffMatch.away;
+    const teamB = isPlayerHome ? playoffMatch.away : playoffMatch.home;
+    startMatch(teamA, teamB, modeStyle, { type: "playoff", playoffKey });
   };
 
   return (
@@ -265,28 +348,35 @@ function TournamentMode({
         ) : (
           <>
             {/* Nav Tabs */}
-            <div style={{ display: "flex", gap: "10px", width: "100%", marginBottom: "20px", background: "rgba(255,255,255,0.03)", padding: "6px", borderRadius: "10px" }}>
+            <div style={{ display: "flex", gap: "10px", width: "100%", marginBottom: "20px", background: "rgba(255,255,255,0.03)", padding: "6px", borderRadius: "10px", flexWrap: "wrap" }}>
               <button 
                 className={`rules-btn ${activeTab === "table" ? "active" : ""}`}
-                style={{ flex: 1, border: "none", margin: 0, padding: "12px", background: activeTab === "table" ? "linear-gradient(135deg, #ffcc00, #ff9900)" : "transparent", color: activeTab === "table" ? "#000" : "#fff" }}
+                style={{ flex: 1, border: "none", margin: 0, padding: "12px", minWidth: "80px", background: activeTab === "table" ? "linear-gradient(135deg, #ffcc00, #ff9900)" : "transparent", color: activeTab === "table" ? "#000" : "#fff" }}
                 onClick={() => setActiveTab("table")}
               >
                 📊 Points Table
               </button>
               <button 
                 className={`rules-btn ${activeTab === "schedule" ? "active" : ""}`}
-                style={{ flex: 1, border: "none", margin: 0, padding: "12px", background: activeTab === "schedule" ? "linear-gradient(135deg, #ffcc00, #ff9900)" : "transparent", color: activeTab === "schedule" ? "#000" : "#fff" }}
+                style={{ flex: 1, border: "none", margin: 0, padding: "12px", minWidth: "80px", background: activeTab === "schedule" ? "linear-gradient(135deg, #ffcc00, #ff9900)" : "transparent", color: activeTab === "schedule" ? "#000" : "#fff" }}
                 onClick={() => setActiveTab("schedule")}
               >
-                📅 Matches / Schedule
+                📅 Matches
               </button>
               <button 
                 className={`rules-btn ${activeTab === "playoffs" ? "active" : ""}`}
-                style={{ flex: 1, border: "none", margin: 0, padding: "12px", background: activeTab === "playoffs" ? "linear-gradient(135deg, #ffcc00, #ff9900)" : "transparent", color: activeTab === "playoffs" ? "#000" : "#fff" }}
+                style={{ flex: 1, border: "none", margin: 0, padding: "12px", minWidth: "80px", background: activeTab === "playoffs" ? "linear-gradient(135deg, #ffcc00, #ff9900)" : "transparent", color: activeTab === "playoffs" ? "#000" : "#fff" }}
                 onClick={() => setActiveTab("playoffs")}
                 disabled={stage === "league"}
               >
-                🏁 Playoffs Bracket
+                🏁 Playoffs
+              </button>
+              <button 
+                className={`rules-btn ${activeTab === "hof" ? "active" : ""}`}
+                style={{ flex: 1, border: "none", margin: 0, padding: "12px", minWidth: "80px", background: activeTab === "hof" ? "linear-gradient(135deg, #ffd700, #ff8c00)" : "transparent", color: activeTab === "hof" ? "#000" : "#ffd700" }}
+                onClick={() => setActiveTab("hof")}
+              >
+                🏆 HoF
               </button>
             </div>
 
@@ -363,6 +453,7 @@ function TournamentMode({
                     <div style={{ display: "grid", gap: "10px" }}>
                       {currentRoundMatches.map((match, idx) => {
                         const isPlayerMatch = match.home === playerTeam || match.away === playerTeam;
+                        const isUnlocked = idx === 0 || currentRoundMatches[idx - 1].played;
                         return (
                           <div 
                             key={idx}
@@ -373,22 +464,137 @@ function TournamentMode({
                               padding: "12px 16px", 
                               background: isPlayerMatch ? "rgba(255,215,0,0.08)" : "rgba(255,255,255,0.02)",
                               border: isPlayerMatch ? "1px solid rgba(255,215,0,0.3)" : "1px solid rgba(255,255,255,0.05)",
-                              borderRadius: "10px"
+                              borderRadius: "10px",
+                              opacity: isUnlocked || match.played ? 1.0 : 0.4
                             }}
                           >
-                            <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "40%" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "32%" }}>
                               <img src={teamLogos[match.home.trim().toLowerCase()] || FALLBACK_LOGO} style={{ width: "24px", height: "24px", objectFit: "contain" }} alt="" />
-                              <span style={{ fontWeight: match.home === playerTeam ? "bold" : "normal" }}>{match.home}</span>
+                              <span style={{ fontWeight: match.home === playerTeam ? "bold" : "normal", fontSize: "14px" }}>{match.home}</span>
                             </div>
-                            <div style={{ color: "#aaa", fontWeight: "bold" }}>vs</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-end", width: "40%" }}>
-                              <span style={{ fontWeight: match.away === playerTeam ? "bold" : "normal" }}>{match.away}</span>
+                            
+                            <div style={{ textAlign: "center", width: "36%" }}>
+                              {match.played ? (
+                                <div style={{ fontSize: "12px", color: "#39ff88", fontWeight: "bold" }}>
+                                  Winner: {match.winner} (by {match.margin} cards)
+                                </div>
+                              ) : isPlayerMatch ? (
+                                <span style={{ fontSize: "12px", color: isUnlocked ? "#ffd700" : "#888", fontWeight: "bold" }}>
+                                  {isUnlocked ? "⏳ Next up for you!" : "🔒 Locked"}
+                                </span>
+                              ) : (
+                                <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
+                                  <button 
+                                    className="play-btn" 
+                                    style={{ padding: "4px 10px", fontSize: "11px", width: "auto", margin: 0, height: "auto" }}
+                                    onClick={() => handleStartMatch(match.home, match.away, "ai_vs_ai", { type: "league", roundIndex: currentRoundIndex, matchIndex: idx })}
+                                    disabled={!isUnlocked}
+                                  >
+                                    🤖 Watch
+                                  </button>
+                                  <button 
+                                    className="rules-btn" 
+                                    style={{ padding: "4px 10px", fontSize: "11px", width: "auto", margin: 0, height: "auto", borderColor: isUnlocked ? "#ffd700" : "#444", color: isUnlocked ? "#ffd700" : "#666" }}
+                                    onClick={() => simulateLeagueMatch(currentRoundIndex, idx)}
+                                    disabled={!isUnlocked}
+                                  >
+                                    ⚡ Sim
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-end", width: "32%" }}>
+                              <span style={{ fontWeight: match.away === playerTeam ? "bold" : "normal", fontSize: "14px" }}>{match.away}</span>
                               <img src={teamLogos[match.away.trim().toLowerCase()] || FALLBACK_LOGO} style={{ width: "24px", height: "24px", objectFit: "contain" }} alt="" />
                             </div>
                           </div>
                         );
                       })}
                     </div>
+
+                    <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                      {currentRoundMatches.every(m => m.played) ? (
+                        <button 
+                          className="play-btn" 
+                          style={{ padding: "12px 24px", minWidth: "180px" }}
+                          onClick={advanceTournamentRound}
+                        >
+                          {currentRoundIndex < 8 ? "Next Round ➡️" : "Proceed to Playoffs 🏆"}
+                        </button>
+                      ) : (
+                        <button 
+                          className="rules-btn" 
+                          style={{ padding: "12px 24px", minWidth: "220px", borderColor: "#ffd700", color: "#ffd700", margin: 0 }}
+                          onClick={simulateAllRemainingMatches}
+                        >
+                          ⚡ Simulate Remaining Matches
+                        </button>
+                      )}
+                      {/* Auto-Advance Toggle */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#aaa" }}>
+                        <span>⚡ Auto-Advance After My Match</span>
+                        <button
+                          onClick={() => setAutoAdvance(prev => !prev)}
+                          style={{
+                            width: "44px", height: "24px", borderRadius: "12px", border: "none", cursor: "pointer",
+                            background: autoAdvance ? "#39ff88" : "rgba(255,255,255,0.15)",
+                            position: "relative", transition: "background 0.3s", flexShrink: 0
+                          }}
+                          title={autoAdvance ? "Auto-Advance ON" : "Auto-Advance OFF"}
+                        >
+                          <span style={{
+                            position: "absolute", top: "3px",
+                            left: autoAdvance ? "23px" : "3px",
+                            width: "18px", height: "18px", borderRadius: "50%",
+                            background: "#fff", transition: "left 0.3s"
+                          }} />
+                        </button>
+                        <span style={{ color: autoAdvance ? "#39ff88" : "#666", fontWeight: "bold", fontSize: "11px" }}>
+                          {autoAdvance ? "ON" : "OFF"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "hof" && (
+              <div style={{ width: "100%", maxHeight: "380px", overflowY: "auto", textAlign: "left" }}>
+                <h3 style={{ color: "#ffd700", margin: "0 0 16px 0" }}>🏆 Hall of Fame — Champion Campaigns</h3>
+                {hallOfFame.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "40px 20px", color: "#666" }}>
+                    <div style={{ fontSize: "60px", marginBottom: "16px", filter: "grayscale(1)" }}>🏆</div>
+                    <p style={{ fontSize: "15px" }}>No champions yet. Win a Tournament to be immortalised here!</p>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: "12px" }}>
+                    {hallOfFame.map((entry, idx) => {
+                      const teamKey = entry.team?.trim().toLowerCase();
+                      const logo = teamLogos[teamKey] || FALLBACK_LOGO;
+                      return (
+                        <div key={idx} style={{
+                          display: "flex", alignItems: "center", gap: "16px",
+                          padding: "14px 18px",
+                          background: idx === 0 ? "rgba(255,215,0,0.12)" : "rgba(255,255,255,0.03)",
+                          border: idx === 0 ? "1px solid rgba(255,215,0,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                          borderRadius: "12px"
+                        }}>
+                          <div style={{ fontSize: "24px", minWidth: "32px", textAlign: "center" }}>
+                            {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`}
+                          </div>
+                          <img src={logo} alt={entry.team} style={{ width: "36px", height: "36px", objectFit: "contain" }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: "bold", color: idx === 0 ? "#ffd700" : "#fff", fontSize: "15px" }}>{entry.team}</div>
+                            <div style={{ fontSize: "12px", color: "#aaa", marginTop: "2px" }}>
+                              {entry.leagueRecord} league record · {entry.date}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: "22px" }}>🏆</div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -401,9 +607,9 @@ function TournamentMode({
                 <div style={{ display: "grid", gap: "12px" }}>
                   {/* Qualifier 1 */}
                   <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                       <span style={{ fontWeight: "bold", color: "#ffd700" }}>Qualifier 1 (1st vs 2nd)</span>
-                      <span>{playoffs.q1.played ? "✅ Complete" : "⏳ Scheduled"}</span>
+                      <span>{playoffs.q1.played ? "✅ Complete" : (playoffs.q1.home ? renderPlayoffButtons("q1", playoffs.q1) : "⏳ Scheduled")}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>{playoffs.q1.home} vs {playoffs.q1.away}</span>
@@ -412,10 +618,10 @@ function TournamentMode({
                   </div>
 
                   {/* Eliminator */}
-                  <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", opacity: playoffs.q1.played ? 1.0 : 0.4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                       <span style={{ fontWeight: "bold", color: "#ffd700" }}>Eliminator (3rd vs 4th)</span>
-                      <span>{playoffs.elim.played ? "✅ Complete" : "⏳ Scheduled"}</span>
+                      <span>{playoffs.elim.played ? "✅ Complete" : (playoffs.elim.home ? renderPlayoffButtons("elim", playoffs.elim) : "⏳ Scheduled")}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>{playoffs.elim.home} vs {playoffs.elim.away}</span>
@@ -424,10 +630,10 @@ function TournamentMode({
                   </div>
 
                   {/* Qualifier 2 */}
-                  <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", opacity: playoffs.elim.played ? 1.0 : 0.4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                       <span style={{ fontWeight: "bold", color: "#ffd700" }}>Qualifier 2 (Q1 Loser vs Elim Winner)</span>
-                      <span>{playoffs.q2.played ? "✅ Complete" : playoffs.q2.home ? "⏳ Scheduled" : "🔒 Awaiting Matches"}</span>
+                      <span>{playoffs.q2.played ? "✅ Complete" : (playoffs.q2.home ? renderPlayoffButtons("q2", playoffs.q2) : "🔒 Awaiting Matches")}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>{playoffs.q2.home || "???"} vs {playoffs.q2.away || "???"}</span>
@@ -436,10 +642,10 @@ function TournamentMode({
                   </div>
 
                   {/* Grand Final */}
-                  <div style={{ padding: "14px", background: "rgba(255,215,0,0.05)", border: "1px solid rgba(255,215,0,0.15)", borderRadius: "10px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <div style={{ padding: "14px", background: "rgba(255,215,0,0.05)", border: "1px solid rgba(255,215,0,0.15)", borderRadius: "10px", opacity: playoffs.q2.played ? 1.0 : 0.4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                       <span style={{ fontWeight: "bold", color: "#ffd700" }}>Grand Final (Q1 Winner vs Q2 Winner)</span>
-                      <span>{playoffs.final.played ? "🏆 Finished" : playoffs.final.home ? "⏳ Scheduled" : "🔒 Awaiting Bracket"}</span>
+                      <span>{playoffs.final.played ? "🏆 Finished" : (playoffs.final.home ? renderPlayoffButtons("final", playoffs.final) : "🔒 Awaiting Bracket")}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>{playoffs.final.home || "???"} vs {playoffs.final.away || "???"}</span>
@@ -453,34 +659,56 @@ function TournamentMode({
             {/* Next Match / Action Footer Panel */}
             <div style={{ marginTop: "24px", padding: "20px", background: "rgba(255,255,255,0.03)", borderRadius: "15px", border: "1px solid rgba(255,255,255,0.05)" }}>
               {stage === "league" ? (
-                <div>
-                  <h3 style={{ margin: "0 0 10px 0" }}>Next League Match: Round {currentRoundIndex + 1}</h3>
-                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "20px", marginBottom: "20px" }}>
-                    <div style={{ textAlign: "center" }}>
-                      <img src={teamLogos[playerTeam.toLowerCase()] || FALLBACK_LOGO} style={{ width: "40px", height: "40px" }} alt="" />
-                      <p style={{ margin: "4px 0 0 0", fontWeight: "bold" }}>{playerTeam}</p>
+                playerMatch && !playerMatch.played ? (
+                  <div>
+                    <h3 style={{ margin: "0 0 10px 0" }}>Next League Match: Round {currentRoundIndex + 1}</h3>
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "20px", marginBottom: "20px" }}>
+                      <div style={{ textAlign: "center" }}>
+                        <img src={teamLogos[playerTeam.toLowerCase()] || FALLBACK_LOGO} style={{ width: "40px", height: "40px" }} alt="" />
+                        <p style={{ margin: "4px 0 0 0", fontWeight: "bold" }}>{playerTeam}</p>
+                      </div>
+                      <div style={{ fontSize: "20px", fontWeight: "bold", color: "#888" }}>VS</div>
+                      <div style={{ textAlign: "center" }}>
+                        <img src={teamLogos[opponentTeam.toLowerCase()] || FALLBACK_LOGO} style={{ width: "40px", height: "40px" }} alt="" />
+                        <p style={{ margin: "4px 0 0 0", fontWeight: "bold" }}>{opponentTeam}</p>
+                      </div>
                     </div>
-                    <div style={{ fontSize: "20px", fontWeight: "bold", color: "#888" }}>VS</div>
-                    <div style={{ textAlign: "center" }}>
-                      <img src={teamLogos[opponentTeam.toLowerCase()] || FALLBACK_LOGO} style={{ width: "40px", height: "40px" }} alt="" />
-                      <p style={{ margin: "4px 0 0 0", fontWeight: "bold" }}>{opponentTeam}</p>
+                    <p style={{ margin: "0 0 20px 0", color: "#ccc", fontSize: "14px" }}>
+                      🔥 League Round: contested over **7 cards**!
+                    </p>
+                    <div style={{ display: "flex", gap: "12px", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                      {!isPlayerMatchUnlocked && (
+                        <p style={{ color: "#ff4d4d", fontSize: "14px", margin: "0 0 10px 0", fontWeight: "bold" }}>
+                          🔒 Please resolve the preceding matches in the Schedule tab to unlock your match!
+                        </p>
+                      )}
+                      <button 
+                        className="play-btn" 
+                        style={{ padding: "14px 28px", fontSize: "15px" }} 
+                        onClick={() => handleStartMatch(playerTeam, opponentTeam, "ai", { type: "league", roundIndex: currentRoundIndex, matchIndex: playerMatchIndex })}
+                        disabled={!isPlayerMatchUnlocked}
+                      >
+                        {isPlayerMatchUnlocked ? "🤖 Play vs AI Match" : "🔒 Match Locked"}
+                      </button>
                     </div>
                   </div>
-                  <p style={{ margin: "0 0 20px 0", color: "#ccc", fontSize: "14px" }}>
-                    🔥 League Round: contested over **7 cards**!
-                  </p>
-                  <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
-                    {playStyle === "online" ? (
-                      <button className="play-btn" style={{ padding: "14px 28px", fontSize: "15px", backgroundColor: "#e67e22" }} onClick={() => handleStartMatch("online")}>
-                        🌐 Play Online Match
-                      </button>
-                    ) : (
-                      <button className="play-btn" style={{ padding: "14px 28px", fontSize: "15px" }} onClick={() => handleStartMatch("ai")}>
-                        🤖 Play vs AI Match
+                ) : (
+                  <div style={{ textAlign: "center" }}>
+                    <h3 style={{ margin: "0 0 10px 0", color: "#ffd700" }}>Round {currentRoundIndex + 1} Player Match Complete</h3>
+                    <p style={{ color: "#ccc", marginBottom: "20px" }}>
+                      You have finished your match. Please resolve or simulate the other fixtures of this round to continue.
+                    </p>
+                    {!currentRoundMatches.every(m => m.played) && (
+                      <button 
+                        className="play-btn" 
+                        style={{ padding: "12px 24px" }}
+                        onClick={simulateAllRemainingMatches}
+                      >
+                        ⚡ Simulate Remaining Matches
                       </button>
                     )}
                   </div>
-                </div>
+                )
               ) : (
                 <div>
                   {/* Playoff matchup evaluator */}
@@ -502,6 +730,16 @@ function TournamentMode({
                       const opponent = match.home === playerTeam ? match.away : match.home;
                       const cardCount = activePlayoffKey === "final" ? 11 : 9;
                       const matchName = activePlayoffKey === "q1" ? "Qualifier 1" : activePlayoffKey === "elim" ? "Eliminator" : activePlayoffKey === "q2" ? "Qualifier 2" : "Grand Final";
+                      
+                      let isPlayoffMatchUnlocked = true;
+                      if (activePlayoffKey === "elim") {
+                        isPlayoffMatchUnlocked = playoffs.q1.played;
+                      } else if (activePlayoffKey === "q2") {
+                        isPlayoffMatchUnlocked = playoffs.elim.played;
+                      } else if (activePlayoffKey === "final") {
+                        isPlayoffMatchUnlocked = playoffs.q2.played;
+                      }
+
                       return (
                         <div>
                           <h3 style={{ margin: "0 0 10px 0", color: "#ffd700" }}>Playoffs: {matchName}</h3>
@@ -519,23 +757,38 @@ function TournamentMode({
                           <p style={{ margin: "0 0 20px 0", color: "#ccc", fontSize: "14px" }}>
                             ⚡ High Stakes: contested over **{cardCount} cards**!
                           </p>
-                          <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
-                            {playStyle === "online" ? (
-                              <button className="play-btn" style={{ padding: "14px 28px", fontSize: "15px", backgroundColor: "#e67e22" }} onClick={() => handleStartPlayoffMatch(activePlayoffKey, "online")}>
-                                🌐 Play Online Match
-                              </button>
-                            ) : (
-                              <button className="play-btn" style={{ padding: "14px 28px", fontSize: "15px" }} onClick={() => handleStartPlayoffMatch(activePlayoffKey, "ai")}>
-                                🤖 Play vs AI Match
-                              </button>
+                          <div style={{ display: "flex", gap: "12px", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                            {!isPlayoffMatchUnlocked && (
+                              <p style={{ color: "#ff4d4d", fontSize: "14px", margin: "0 0 10px 0", fontWeight: "bold" }}>
+                                🔒 Please resolve the preceding matches in the Playoffs Bracket tab to unlock your match!
+                              </p>
                             )}
+                            <button 
+                              className="play-btn" 
+                              style={{ padding: "14px 28px", fontSize: "15px" }} 
+                              onClick={() => handleStartPlayoffMatch(activePlayoffKey, "ai")}
+                              disabled={!isPlayoffMatchUnlocked}
+                            >
+                              {isPlayoffMatchUnlocked ? "🤖 Play vs AI Match" : "🔒 Match Locked"}
+                            </button>
                           </div>
                         </div>
                       );
                     } else {
+                      // Player has no scheduled match. Are they eliminated or waiting?
+                      if (stage === "playoffs") {
+                        return (
+                          <div style={{ textAlign: "center" }}>
+                            <h3 style={{ margin: "0 0 10px 0", color: "#ffd700" }}>Playoffs Match Awaiting</h3>
+                            <p style={{ color: "#ccc", margin: 0 }}>
+                              You are waiting for the other playoff matches to resolve. Head over to the **Playoffs Bracket** tab to simulate or watch them.
+                            </p>
+                          </div>
+                        );
+                      }
                       return (
                         <p style={{ margin: 0, color: "#ccc" }}>
-                          ℹ️ You have been eliminated from the playoffs. View the bracket above, or reset to start over!
+                          ℹ️ You have been eliminated from the playoffs. View the standings/bracket above, or reset to start over!
                         </p>
                       );
                     }
