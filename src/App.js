@@ -256,6 +256,19 @@ function App() {
     user, isGuest, showConfirm, tournamentState
   });
 
+  const isGameplayActive = !!(
+    gameMode && 
+    (gameMode !== "time" || selectedTime) && 
+    (gameMode !== "team" || (playerTeam && aiTeam)) && 
+    (playStyle !== "online" || isOnlineGameStarted) &&
+    (gameMode !== "tournament" || aiTeam) &&
+    !gameOver &&
+    playerHP > 0 &&
+    aiHP > 0 &&
+    playerDeck && playerDeck.length > 0 &&
+    aiDeck && aiDeck.length > 0
+  );
+
   const playerRef = useRef(null);
   const aiRef = useRef(null);
   const drawRef = useRef(null);
@@ -501,13 +514,6 @@ function App() {
 
   // Auto-enter fullscreen and landscape lock ONLY when active gameplay board starts
   useEffect(() => {
-    // Check if the gameplay screen is active (all lobby selectors and setup configurations are completed)
-    const isGameplayActive = gameMode && 
-      (gameMode !== "time" || selectedTime) && 
-      (gameMode !== "team" || (playerTeam && aiTeam)) && 
-      (playStyle !== "online" || isOnlineGameStarted) &&
-      (gameMode !== "tournament" || aiTeam);
-
     if (isGameplayActive) {
       // Only target mobile/tablet viewports
       if (window.innerWidth <= 1100) {
@@ -538,17 +544,10 @@ function App() {
         }
       }
     }
-  }, [gameMode, selectedTime, playerTeam, aiTeam, playStyle, isOnlineGameStarted]);
+  }, [isGameplayActive]);
 
   // Intercept physical/gesture back button and show confirmation modal during active card gameplay on mobile
   useEffect(() => {
-    // Check if the gameplay screen is active
-    const isGameplayActive = gameMode && 
-      (gameMode !== "time" || selectedTime) && 
-      (gameMode !== "team" || (playerTeam && aiTeam)) && 
-      (playStyle !== "online" || isOnlineGameStarted) &&
-      (gameMode !== "tournament" || aiTeam);
-
     if (!isGameplayActive) return;
 
     // Push dummy state to intercept browser back actions
@@ -567,17 +566,10 @@ function App() {
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [gameMode, selectedTime, playerTeam, aiTeam, playStyle, isOnlineGameStarted]);
+  }, [isGameplayActive]);
 
   // Listen for browser fullscreen exit (including via Android/iOS back key/gesture) to trigger confirmation modal instantly
   useEffect(() => {
-    // Check if the gameplay screen is active
-    const isGameplayActive = gameMode && 
-      (gameMode !== "time" || selectedTime) && 
-      (gameMode !== "team" || (playerTeam && aiTeam)) && 
-      (playStyle !== "online" || isOnlineGameStarted) &&
-      (gameMode !== "tournament" || aiTeam);
-
     if (!isGameplayActive) return;
 
     const handleFullscreenChange = () => {
@@ -598,7 +590,7 @@ function App() {
       document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
       document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
     };
-  }, [gameMode, selectedTime, playerTeam, aiTeam, playStyle, isOnlineGameStarted]);
+  }, [isGameplayActive]);
 
   const modeRules = {
     classic: { title: "Classic Mode Rules", points: ["Choose one stat from your top player card.", "Your stat is compared with the AI’s top card.", "Higher value wins the round.", "Winner collects both cards and draw pile cards.", "Game ends when one side gets all cards."] },
