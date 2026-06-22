@@ -345,7 +345,7 @@ function dealDecks(roomId) {
     let creatorReserve = [];
     let joinerReserve = [];
 
-    if (gameMode === "tournament") {
+    if (gameMode === "tournament" || gameMode === "team") {
         const deckLimit = roomDeckLimits[roomId] || 7;
         creatorDeck = deck1.slice(0, deckLimit);
         creatorReserve = deck1.slice(deckLimit);
@@ -706,30 +706,30 @@ io.on("connection", (socket) => {
         if (isCreator && game.creatorSwapUsed) return;
         if (!isCreator && game.joinerSwapUsed) return;
 
-        const reserve = isCreator ? game.creatorReserve : game.joinerReserve;
-        const candidate = reserve.find(c => c.name === selectedCandidate.name);
-        if (!candidate) return; // Verify selected card is in their reserve pool
+        const pool = (game.gameMode === "team" || game.gameMode === "tournament")
+            ? (isCreator ? game.creatorReserve : game.joinerReserve)
+            : (isCreator ? game.creatorDeck.slice(1) : game.joinerDeck.slice(1));
+        const candidate = pool.find(c => c.name === selectedCandidate.name);
+        if (!candidate) return;
 
         if (isCreator) {
             const currentActive = game.creatorDeck[0];
-            game.creatorReserve = game.creatorReserve.filter(c => c.name !== candidate.name);
             if (game.gameMode === "team" || game.gameMode === "tournament") {
+                game.creatorReserve = game.creatorReserve.filter(c => c.name !== candidate.name);
                 game.creatorDeck = [candidate, ...game.creatorDeck.slice(1)];
             } else {
-                const unselected = game.creatorReserve.find(c => c.name !== candidate.name);
-                const remaining = game.creatorDeck.slice(1).filter(c => c.name !== candidate.name && c.name !== (unselected ? unselected.name : ""));
-                game.creatorDeck = [candidate, ...shuffle([...remaining, currentActive, unselected].filter(Boolean))];
+                const remaining = game.creatorDeck.slice(1).filter(c => c.name !== candidate.name);
+                game.creatorDeck = [candidate, ...shuffle([...remaining, currentActive])];
             }
             game.creatorSwapUsed = true;
         } else {
             const currentActive = game.joinerDeck[0];
-            game.joinerReserve = game.joinerReserve.filter(c => c.name !== candidate.name);
             if (game.gameMode === "team" || game.gameMode === "tournament") {
+                game.joinerReserve = game.joinerReserve.filter(c => c.name !== candidate.name);
                 game.joinerDeck = [candidate, ...game.joinerDeck.slice(1)];
             } else {
-                const unselected = game.joinerReserve.find(c => c.name !== candidate.name);
-                const remaining = game.joinerDeck.slice(1).filter(c => c.name !== candidate.name && c.name !== (unselected ? unselected.name : ""));
-                game.joinerDeck = [candidate, ...shuffle([...remaining, currentActive, unselected].filter(Boolean))];
+                const remaining = game.joinerDeck.slice(1).filter(c => c.name !== candidate.name);
+                game.joinerDeck = [candidate, ...shuffle([...remaining, currentActive])];
             }
             game.joinerSwapUsed = true;
         }
