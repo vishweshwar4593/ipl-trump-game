@@ -997,8 +997,8 @@ function App() {
 
   // Helper: compute matchStats for the result screen
   const buildMatchStats = (isPlayerWin) => ({
-    cardsWon: isPlayerWin ? playerDeck.length : aiDeck.length,
-    cardsLost: isPlayerWin ? aiDeck.length : playerDeck.length,
+    cardsWon: playerDeck.length,
+    cardsLost: aiDeck.length,
     statHistory,
     tournamentContext: tournamentState && activeTournamentMatch?.type === "league" ? {
       roundIndex: activeTournamentMatch.roundIndex,
