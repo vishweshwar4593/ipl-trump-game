@@ -34,8 +34,7 @@ if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && proc
     }
 } else {
     if (process.env.NODE_ENV === "production") {
-        console.error("[Firebase Admin] FATAL: Firebase credentials are missing in production! Crashing start.");
-        process.exit(1);
+        console.error("[Firebase Admin] ERROR: Firebase credentials are missing in production! Authenticated logins will be rejected.");
     } else {
         console.warn("[Firebase Admin] WARNING: Firebase credentials not found. Running in development fallback mode.");
     }
