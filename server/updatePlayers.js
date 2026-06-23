@@ -50,18 +50,18 @@ async function executeGeminiPromptWithRotation(prompt) {
 
             const result = await model.generateContent(prompt);
             const text = result.response.text();
-            
+
             // Validate that the output is indeed a parseable JSON object
             JSON.parse(text);
             return text; // Success!
 
         } catch (error) {
             console.warn(`⚠️ Warning: Gemini Key #${keyNumber} failed: ${error.message.substring(0, 120)}...`);
-            
+
             // Rotate to the next key in line (round-robin)
             currentKeyIndex = (currentKeyIndex + 1) % GEMINI_KEYS.length;
             console.log(`🔄 Rotating to Gemini API Key #${currentKeyIndex + 1} for next attempt...`);
-            
+
             attempts++;
             // Small pause before retrying with the next key
             await sleep(1000);
@@ -269,7 +269,7 @@ async function runUpdate() {
     // ──────────────────────────────────────────────────────────
     for (const range of RANGES) {
         console.log(`\n🔍 [Group ${range.name}] Searching players starting A-Z using Google Gemini...`);
-        
+
         const discoverPrompt = `
           Provide a highly comprehensive list of as many active or legendary IPL cricket players as possible (aim for at least 40-50 players) ${range.promptRange} who have played a minimum of 25 matches in their IPL career.
           For each player, you must provide:
@@ -363,7 +363,7 @@ async function runUpdate() {
     // PHASE 2: BATCH STATS EXTRACTION WITH KEY ROTATION
     // ──────────────────────────────────────────────────────────
     console.log("\n📊 Phase 2: Updating statistics in high-efficiency batches of 45...");
-    
+
     const finalPlayersList = [];
     const BATCH_SIZE = 45; // Increased from 10 to 45 to reduce request count and protect daily quotas
 
@@ -375,7 +375,7 @@ async function runUpdate() {
         console.log(`\n[Batch ${batchIndex}/${totalBatches}] Processing stats for: ${batch.map(p => p.name).join(", ")}`);
 
         // We query all players in the batch to keep stats 100% fresh and up-to-date
-        const playersToQuery = batch; 
+        const playersToQuery = batch;
 
         console.log(`🔗 Routing stats completion for Batch ${batchIndex} to Google Gemini (Active Key #${currentKeyIndex + 1})...`);
 
@@ -484,7 +484,7 @@ async function runUpdate() {
     // ──────────────────────────────────────────────────────────
     try {
         fs.writeFileSync(PLAYERS_FILE_PATH, JSON.stringify(finalPlayersList, null, 2), "utf8");
-        
+
         // Automatically sync to frontend copy for complete database parity
         try {
             const frontendDir = path.dirname(FRONTEND_PLAYERS_PATH);
@@ -495,7 +495,7 @@ async function runUpdate() {
         } catch (feErr) {
             console.warn("⚠️ Warning: Could not synchronize automatically to frontend players directory:", feErr.message);
         }
-        
+
         console.log("\n==============================================");
         console.log("🎉 SUCCESS: All players' stats have been successfully updated! 🎉");
         console.log(`Saved ${finalPlayersList.length} high-quality player cards to players.json.`);

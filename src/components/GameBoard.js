@@ -46,7 +46,8 @@ function GameBoard({
     overAnnouncement,
     swapTimer,
     playerTeam,
-    aiTeam
+    aiTeam,
+    playerFranchisePool
 }) {
 
     // ✅ ADD THIS LINE
@@ -105,7 +106,9 @@ function GameBoard({
                             onClick={handleOpenPlayerSwap}
                             disabled={
                                 playerSwapUsed || 
-                                (gameMode === "tournament" ? playerDeck.length === 0 : playerDeck.length < 3) || 
+                                ((gameMode === "tournament" || gameMode === "team") 
+                                    ? (playerDeck.length === 0 || (playerFranchisePool && playerFranchisePool.length === 0))
+                                    : playerDeck.length < 2) || 
                                 turn !== "player" || 
                                 selectedStat !== null || 
                                 animate ||

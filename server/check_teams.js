@@ -66,7 +66,7 @@ async function verifyAllPlayerTeams() {
     const batch = players.slice(i, i + BATCH_SIZE);
     const batchNum = Math.floor(i / BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(players.length / BATCH_SIZE);
-    
+
     console.log(`\nVerifying Batch ${batchNum}/${totalBatches}...`);
 
     const playerNamesString = batch.map((p, idx) => `${idx + 1}. currently ${p.name} belongs to which ipl team`).join("\n");
@@ -154,7 +154,7 @@ async function verifyAllPlayerTeams() {
   } else {
     console.log(`Found ${mismatches.length} team mismatches:`);
     console.log(JSON.stringify(mismatches, null, 2));
-    
+
     // Ask if they want us to update their players.json
     console.log("To automatically apply these corrections to your players.json, let Antigravity know!");
   }

@@ -933,6 +933,11 @@ const handleTurnTimeout = useCallback(() => {
       const roomId = localStorage.getItem("roomId");
       socket.emit("playerSwapped", { roomId, selectedCandidate });
       setSwapModalOpen(false);
+      
+      const currentActiveCard = playerDeck[0];
+      const discardMsg = (gameMode === "team" || gameMode === "tournament") ? " (Swapped card discarded)" : "";
+      setSwapAnnouncement(`🔄 Tactical Swap: ${currentActiveCard.name} subbed for ${selectedCandidate.name}!${discardMsg}`);
+      setTimeout(() => setSwapAnnouncement(null), 4000);
       return;
     }
     

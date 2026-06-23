@@ -15,6 +15,8 @@ function OnlineMode({
     setWeather,
     setMoisture,
     setPitchCondition,
+    setPlayerFranchisePool,
+    setAiFranchisePool,
     teams = [],
 }) {
     const isTeamMode = gameMode === "team" || gameMode === "tournament";
@@ -77,6 +79,8 @@ function OnlineMode({
 
             setPlayerDeck(data.playerDeck);
             setAiDeck(data.aiDeck);
+            if (data.playerFranchisePool && setPlayerFranchisePool) setPlayerFranchisePool(data.playerFranchisePool);
+            if (data.aiFranchisePool && setAiFranchisePool) setAiFranchisePool(data.aiFranchisePool);
             setIsOnlineGameStarted(true);
         };
 
@@ -109,7 +113,7 @@ function OnlineMode({
             socket.off("waitingForCreatorTeam", onWaitingForCreatorTeam);
             socket.off("errorMessage", onErrorMessage);
         };
-    }, [setPlayerDeck, setAiDeck, setIsOnlineGameStarted, setGameMode, setOnlineRole, setPlayerTeam, setAiTeam, setTurn, setWeather, setMoisture, setPitchCondition]);
+    }, [setPlayerDeck, setAiDeck, setIsOnlineGameStarted, setGameMode, setOnlineRole, setPlayerTeam, setAiTeam, setTurn, setWeather, setMoisture, setPitchCondition, setPlayerFranchisePool, setAiFranchisePool]);
 
     const handleCreateRoom = () => {
         if (!socket.connected) {

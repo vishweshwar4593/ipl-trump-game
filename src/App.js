@@ -270,7 +270,10 @@ function App() {
     overAnnouncement,
     swapTimer,
     statHistory,
-    wasEverBehind
+    wasEverBehind,
+    playerFranchisePool,
+    setPlayerFranchisePool,
+    setAiFranchisePool
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
     playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole,
@@ -645,6 +648,12 @@ function App() {
     if (gameMode === "tournament" && aiTeam && playerDeck.length > 0 && aiDeck.length > 0) {
       updateTournamentProgress(false);
       return;
+    }
+
+    const roomId = localStorage.getItem("roomId");
+    if (roomId) {
+      socket.emit("leaveRoom", { roomId });
+      localStorage.removeItem("roomId");
     }
 
     setGameMode(null);
@@ -1066,6 +1075,12 @@ function App() {
   };
 
   const clearSaveAndGoHome = () => {
+    const roomId = localStorage.getItem("roomId");
+    if (roomId) {
+      socket.emit("leaveRoom", { roomId });
+      localStorage.removeItem("roomId");
+    }
+
     setSavedGameState(null);
     if (user && !isGuest) {
       const gameRef = ref(database, `users/${user.uid}/savedGameState`);
@@ -1077,6 +1092,14 @@ function App() {
     setGameMode(null);
     setPlayStyle(null);
     setOnlineRole(null);
+    setGameOver(false);
+    setIsOnlineGameStarted(false);
+    setPlayerTeam(null);
+    setAiTeam(null);
+    setPlayerDeck([]);
+    setAiDeck([]);
+    setPlayerFranchisePool([]);
+    setAiFranchisePool([]);
   };
 
   // Show login screen if not signed in and not playing as guest
@@ -1177,6 +1200,8 @@ function App() {
         setWeather={setWeather}
         setMoisture={setMoisture}
         setPitchCondition={setPitchCondition}
+        setPlayerFranchisePool={setPlayerFranchisePool}
+        setAiFranchisePool={setAiFranchisePool}
         teams={teams}
       />
     );
@@ -1390,6 +1415,7 @@ function App() {
             swapTimer={swapTimer}
             playerTeam={playerTeam}
             aiTeam={aiTeam}
+            playerFranchisePool={playerFranchisePool}
           />
         ) : (
           <div className="loading">Checking winner...</div>
