@@ -1,8 +1,12 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const path = require("path");
 const players = require("./players.json"); // ✅ local copy, safe for deployment
 const { initCron } = require("./cronScheduler");
+
+// Load environment variables
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
 // Initialize Firebase Admin SDK
 const admin = require("firebase-admin");
@@ -11,7 +15,7 @@ let firebaseAdminReady = false;
 if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
     try {
         admin.initializeApp({
-            credential: admin.credential.cert({
+            credential: admin.cert({
                 projectId: process.env.FIREBASE_PROJECT_ID,
                 clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
                 privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -25,7 +29,7 @@ if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && proc
 } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     try {
         admin.initializeApp({
-            credential: admin.credential.applicationDefault()
+            credential: admin.applicationDefault()
         });
         firebaseAdminReady = true;
         console.log("[Firebase Admin] Initialized successfully using GOOGLE_APPLICATION_CREDENTIALS.");
