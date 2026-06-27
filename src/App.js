@@ -17,7 +17,7 @@ import { useGameAudio } from "./hooks/useGameAudio";
 import { useGameEngine } from "./hooks/useGameEngine";
 import { useAuth } from "./context/AuthContext";
 import TournamentMode from "./modes/TournamentMode";
-import { ref, get, set, remove } from "firebase/database";
+import { ref, get, remove } from "firebase/database";
 import { database } from "./firebase";
 import { useAchievements } from "./hooks/useAchievements";
 
@@ -245,7 +245,6 @@ function App() {
   const {
     tournamentState,
     setTournamentState,
-    activeTournamentMatch,
     setActiveTournamentMatch,
     tournamentHistory,
     hallOfFame,
