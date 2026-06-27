@@ -1,5 +1,5 @@
 import Card from "./Card.js";
-import { getPlayerRole } from "../hooks/useGameEngine.js";
+import { getPlayerRole } from "../utils/gameRules.js";
 import teamLogos from "../data/teamLogos.js";
 
 const FALLBACK_LOGO = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23cc2200'/><path d='M50 5 Q70 30 70 50 Q70 70 50 95 Q30 70 30 50 Q30 30 50 5Z' fill='%23aa1100'/><path d='M5 50 Q30 30 50 30 Q70 30 95 50 Q70 70 50 70 Q30 70 5 50Z' fill='%23aa1100'/><path d='M50 5 Q70 30 70 50 Q70 70 50 95' stroke='%23f5e6c8' stroke-width='2' fill='none'/><path d='M5 50 Q30 30 50 30 Q70 30 95 50' stroke='%23f5e6c8' stroke-width='2' fill='none'/></svg>`;
@@ -47,7 +47,8 @@ function GameBoard({
     swapTimer,
     playerTeam,
     aiTeam,
-    playerFranchisePool
+    playerFranchisePool,
+    superOverBanner
 }) {
 
     // ✅ ADD THIS LINE
@@ -251,6 +252,16 @@ function GameBoard({
                         <button className="close-swap-modal-btn" onClick={() => setSwapModalOpen(false)}>
                             Keep Current Card
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Super Over Fullscreen Overlay Modal */}
+            {superOverBanner && (
+                <div className="super-over-overlay">
+                    <div className="super-over-banner">
+                        <h1 className="super-over-title">SUPER OVER</h1>
+                        <p className="super-over-subtitle">Get Ready for the Ultimate Tiebreaker!</p>
                     </div>
                 </div>
             )}

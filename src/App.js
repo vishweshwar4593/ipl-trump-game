@@ -21,6 +21,14 @@ import { ref, get, set, remove } from "firebase/database";
 import { database } from "./firebase";
 import { useAchievements } from "./hooks/useAchievements";
 
+// Modals
+import LoginConflictModal from "./components/modals/LoginConflictModal";
+import ExitConfirmationModal from "./components/modals/ExitConfirmationModal";
+import ReconnectModal from "./components/modals/ReconnectModal";
+import OpponentLeftModal from "./components/modals/OpponentLeftModal";
+
+// Custom Tournament Campaign Hook
+import { useTournamentCampaign, TEAM_RATINGS } from "./hooks/useTournamentCampaign";
 
 export const STAT_WEIGHTS = {
   runs: 0.85,
@@ -37,27 +45,13 @@ export const STAT_WEIGHTS = {
   catches: 1.0
 };
 
-export const TEAM_RATINGS = {
-  "chennai super kings": 88,
-  "mumbai indians": 87,
-  "royal challengers bengaluru": 85,
-  "kolkata knight riders": 86,
-  "delhi capitals": 82,
-  "sunrisers hyderabad": 84,
-  "rajasthan royals": 84,
-  "punjab kings": 80,
-  "lucknow super giants": 81,
-  "gujarat titans": 82
-};
-
 function App() {
   const { isMuted, toggleMute, playClick, playWin, playLose, playHit } = useGameAudio();
   const { user: authUser, logout } = useAuth();
   const [user, setUser] = useState(undefined);
   const [isGuest, setIsGuest] = useState(false);
   const [loginConflict, setLoginConflict] = useState(false);
-  // Hall of Fame state
-  const [hallOfFame, setHallOfFame] = useState([]);
+
 
   // Generate or retrieve persistent guest UID
   const [guestUid] = useState(() => {
@@ -117,9 +111,6 @@ function App() {
   };
 
 
-
-
-
   useEffect(() => {
     if (clientUid && clientDisplayName) {
       const register = async () => {
@@ -159,7 +150,6 @@ function App() {
 
 
   const [savedGameState, setSavedGameState] = useState(null);
-  const [activeTournamentMatch, setActiveTournamentMatch] = useState(null);
 
   // Achievement system
   const { unlockedIds, newToast, dismissToast, checkAndUnlock } = useAchievements({ user, isGuest });
@@ -168,7 +158,6 @@ function App() {
   useEffect(() => {
     if (!user) {
       setSavedGameState(null);
-      setTournamentState(null);
       return;
     }
 
@@ -181,19 +170,6 @@ function App() {
           remove(gameRef).catch(err => console.error("Error clearing cloud save:", err));
         }
         setSavedGameState(null);
-
-        const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
-        const tourSnap = await get(tourRef);
-        if (tourSnap.exists()) {
-          setTournamentState(tourSnap.val());
-        } else {
-          setTournamentState(null);
-        }
-
-        // Load Hall of Fame
-        const hofRef = ref(database, `users/${user.uid}/hallOfFame`);
-        const hofSnap = await get(hofRef);
-        setHallOfFame(hofSnap.exists() ? (hofSnap.val() || []) : []);
       } catch (err) {
         console.error("Error loading data from Firebase Realtime Database:", err);
       }
@@ -208,13 +184,6 @@ function App() {
       try {
         localStorage.removeItem("savedGameState");
         setSavedGameState(null);
-
-        const tourStr = localStorage.getItem("savedTournamentState");
-        setTournamentState(tourStr ? JSON.parse(tourStr) : null);
-
-        // Load Hall of Fame for guest
-        const hofStr = localStorage.getItem("ipl_hall_of_fame");
-        setHallOfFame(hofStr ? JSON.parse(hofStr) : []);
       } catch (err) {
         console.error("Error loading LocalStorage fallback for guest:", err);
       }
@@ -237,15 +206,6 @@ function App() {
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [disconnectTimeLeft, setDisconnectTimeLeft] = useState(45);
   const disconnectTimerRef = useRef(null);
-  const [tournamentState, setTournamentState] = useState(() => {
-    try {
-      const str = localStorage.getItem("savedTournamentState");
-      return str ? JSON.parse(str) : null;
-    } catch {
-      return null;
-    }
-  });
-
   const [hasUnlockedAchievementsForMatch, setHasUnlockedAchievementsForMatch] = useState(false);
 
   const isBattleMode = gameMode === "battle";
@@ -273,11 +233,47 @@ function App() {
     wasEverBehind,
     playerFranchisePool,
     setPlayerFranchisePool,
-    setAiFranchisePool
+    setAiFranchisePool,
+    superOverBanner
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
     playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole,
-    user, isGuest, showConfirm, tournamentState
+    user, isGuest, showConfirm
+  });
+
+  // Tournament Hook containing campaign simulation states and functions
+  const {
+    tournamentState,
+    setTournamentState,
+    activeTournamentMatch,
+    setActiveTournamentMatch,
+    tournamentHistory,
+    hallOfFame,
+    updateTournamentProgress,
+    simulateLeagueMatch,
+    simulateAllRemainingMatches,
+    advanceTournamentRound,
+    simulatePlayoffMatch,
+    buildMatchStats
+  } = useTournamentCampaign({
+    user,
+    isGuest,
+    checkAndUnlock,
+    playerDeck,
+    aiDeck,
+    wasEverBehind,
+    playerTeam,
+    setPlayerTeam,
+    aiTeam,
+    setAiTeam,
+    setIsOnlineGameStarted,
+    setResumedGameState,
+    setSavedGameState,
+    setPlayerDeck,
+    setAiDeck,
+    setPlayerFranchisePool,
+    setAiFranchisePool,
+    statHistory
   });
 
   const isGameplayActive = !!(
@@ -644,9 +640,16 @@ function App() {
   const confirmGoHome = () => {
     setShowConfirm(false);
 
-    // If we are exiting an active tournament match, record it as a loss
+    // If we are exiting an active tournament match, record it as a loss (or simulate if spectator)
     if (gameMode === "tournament" && aiTeam && playerDeck.length > 0 && aiDeck.length > 0) {
-      updateTournamentProgress(false);
+      if (playStyle === "ai_vs_ai") {
+        const ratingHome = TEAM_RATINGS[playerTeam.toLowerCase()] || 80;
+        const ratingAway = TEAM_RATINGS[aiTeam.toLowerCase()] || 80;
+        const homeWins = Math.random() < (ratingHome / (ratingHome + ratingAway));
+        updateTournamentProgress(homeWins);
+      } else {
+        updateTournamentProgress(false);
+      }
       return;
     }
 
@@ -698,381 +701,7 @@ function App() {
     setPlayStyle(savedState.playStyle || "ai");
   };
 
-  const updateTournamentProgress = (isPlayerWin) => {
-    if (!tournamentState) return;
 
-    const state = { ...tournamentState };
-    const { playerTeam: globalPlayerTeam, pointsTable, stage, playoffs } = state;
-    
-    if (!activeTournamentMatch) return;
-
-    if (stage === "league") {
-      const { roundIndex, matchIndex } = activeTournamentMatch;
-      const match = state.schedule[roundIndex][matchIndex];
-      
-      match.played = true;
-      match.winner = isPlayerWin ? match.home : match.away;
-      match.loser = isPlayerWin ? match.away : match.home;
-      match.margin = isPlayerWin ? playerDeck.length : aiDeck.length;
-
-      const pTable = { ...pointsTable };
-      pTable[match.home].played += 1;
-      pTable[match.away].played += 1;
-      
-      if (isPlayerWin) {
-        pTable[match.home].won += 1;
-        pTable[match.home].points += 2;
-        pTable[match.home].ncd = (pTable[match.home].ncd || 0) + match.margin;
-        pTable[match.away].lost += 1;
-        pTable[match.away].ncd = (pTable[match.away].ncd || 0) - match.margin;
-      } else {
-        pTable[match.away].won += 1;
-        pTable[match.away].points += 2;
-        pTable[match.away].ncd = (pTable[match.away].ncd || 0) + match.margin;
-        pTable[match.home].lost += 1;
-        pTable[match.home].ncd = (pTable[match.home].ncd || 0) - match.margin;
-      }
-
-      state.pointsTable = pTable;
-
-    } else if (stage === "playoffs" && playoffs) {
-      const play = { ...playoffs };
-      const { playoffKey } = activeTournamentMatch;
-      const oppTeam = aiTeam;
-
-      if (playoffKey === "q1") {
-        play.q1.played = true;
-        if (isPlayerWin) {
-          play.q1.winner = playerTeam;
-          play.q1.loser = oppTeam;
-        } else {
-          play.q1.winner = oppTeam;
-          play.q1.loser = playerTeam;
-        }
-
-      } else if (playoffKey === "elim") {
-        play.elim.played = true;
-        if (isPlayerWin) {
-          play.elim.winner = playerTeam;
-        } else {
-          play.elim.winner = oppTeam;
-          if (playerTeam === globalPlayerTeam) {
-            state.stage = "eliminated";
-          }
-        }
-
-      } else if (playoffKey === "q2") {
-        play.q2.played = true;
-        if (isPlayerWin) {
-          play.q2.winner = playerTeam;
-          play.final.home = play.q1.winner;
-          play.final.away = playerTeam;
-        } else {
-          play.q2.winner = oppTeam;
-          if (playerTeam === globalPlayerTeam) {
-            state.stage = "eliminated";
-          }
-        }
-
-      } else if (playoffKey === "final") {
-        play.final.played = true;
-        if (isPlayerWin) {
-          play.final.winner = playerTeam;
-          if (playerTeam === globalPlayerTeam) {
-            state.stage = "champion";
-          } else {
-            state.stage = "eliminated";
-          }
-        } else {
-          play.final.winner = oppTeam;
-          if (oppTeam === globalPlayerTeam) {
-            state.stage = "champion";
-          } else {
-            state.stage = "eliminated";
-          }
-        }
-      }
-
-      // Check if both Q1 and Eliminator are resolved, then schedule Q2!
-      if (play.q1.played && play.elim.played && !play.q2.played && !play.q2.home) {
-        play.q2.home = play.q1.loser;
-        play.q2.away = play.elim.winner;
-      }
-
-      // Check if Q2 is resolved, then schedule the Grand Final!
-      if (play.q2.played && !play.final.played && !play.final.home) {
-        play.final.home = play.q1.winner;
-        play.final.away = play.q2.winner;
-      }
-
-      state.playoffs = play;
-    }
-
-    setTournamentState(state);
-    if (user && !isGuest) {
-      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
-      set(tourRef, state).catch(err => console.error("Error saving tournament to cloud:", err));
-    } else {
-      localStorage.setItem("savedTournamentState", JSON.stringify(state));
-    }
-
-    // Fire achievement checks
-    const margin = isPlayerWin ? playerDeck.length : aiDeck.length;
-    checkAndUnlock({
-      type: "match_end",
-      isWin: isPlayerWin,
-      gameMode: "tournament",
-      margin,
-      timeLeft: 0,
-      tournamentState: state,
-      wasEverBehind,
-      _user: user,
-      _isGuest: isGuest,
-    });
-
-    // Write Hall of Fame if champion
-    if (state.stage === "champion") {
-      writeHallOfFameEntry(state);
-    }
-
-    // Reset game match variables
-    setPlayerTeam(null);
-    setAiTeam(null);
-    setIsOnlineGameStarted(false);
-    setResumedGameState(null);
-    setSavedGameState(null);
-    setActiveTournamentMatch(null);
-
-    if (user && !isGuest) {
-      const gameRef = ref(database, `users/${user.uid}/savedGameState`);
-      remove(gameRef).catch(err => console.error("Error clearing cloud game save:", err));
-    } else {
-      localStorage.removeItem("savedGameState");
-    }
-  };
-
-  const simulateLeagueMatch = (roundIdx, matchIdx) => {
-    if (!tournamentState) return;
-    const state = { ...tournamentState };
-    const match = state.schedule[roundIdx][matchIdx];
-
-    const ratingHome = TEAM_RATINGS[match.home.toLowerCase()] || 80;
-    const ratingAway = TEAM_RATINGS[match.away.toLowerCase()] || 80;
-    const probHome = ratingHome / (ratingHome + ratingAway);
-    const homeWins = Math.random() < probHome;
-
-    match.played = true;
-    match.winner = homeWins ? match.home : match.away;
-    match.loser = homeWins ? match.away : match.home;
-    match.margin = Math.floor(Math.random() * 5) + 1;
-
-    const pTable = { ...state.pointsTable };
-    pTable[match.home].played += 1;
-    pTable[match.away].played += 1;
-
-    if (homeWins) {
-      pTable[match.home].won += 1;
-      pTable[match.home].points += 2;
-      pTable[match.home].ncd = (pTable[match.home].ncd || 0) + match.margin;
-      pTable[match.away].lost += 1;
-      pTable[match.away].ncd = (pTable[match.away].ncd || 0) - match.margin;
-    } else {
-      pTable[match.away].won += 1;
-      pTable[match.away].points += 2;
-      pTable[match.away].ncd = (pTable[match.away].ncd || 0) + match.margin;
-      pTable[match.home].lost += 1;
-      pTable[match.home].ncd = (pTable[match.home].ncd || 0) - match.margin;
-    }
-    state.pointsTable = pTable;
-
-    setTournamentState(state);
-    if (user && !isGuest) {
-      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
-      set(tourRef, state).catch(err => console.error("Error saving simulated tournament to cloud:", err));
-    } else {
-      localStorage.setItem("savedTournamentState", JSON.stringify(state));
-    }
-  };
-
-  const simulateAllRemainingMatches = () => {
-    if (!tournamentState) return;
-    const state = { ...tournamentState };
-    const roundMatches = state.schedule[state.currentRoundIndex];
-    const pTable = { ...state.pointsTable };
-
-    roundMatches.forEach(match => {
-      const isPlayerMatch = match.home === state.playerTeam || match.away === state.playerTeam;
-      if (!match.played && !isPlayerMatch) {
-        const ratingHome = TEAM_RATINGS[match.home.toLowerCase()] || 80;
-        const ratingAway = TEAM_RATINGS[match.away.toLowerCase()] || 80;
-        const probHome = ratingHome / (ratingHome + ratingAway);
-        const homeWins = Math.random() < probHome;
-
-        match.played = true;
-        match.winner = homeWins ? match.home : match.away;
-        match.loser = homeWins ? match.away : match.home;
-        match.margin = Math.floor(Math.random() * 5) + 1;
-
-        pTable[match.home].played += 1;
-        pTable[match.away].played += 1;
-
-        if (homeWins) {
-          pTable[match.home].won += 1;
-          pTable[match.home].points += 2;
-          pTable[match.home].ncd = (pTable[match.home].ncd || 0) + match.margin;
-          pTable[match.away].lost += 1;
-          pTable[match.away].ncd = (pTable[match.away].ncd || 0) - match.margin;
-        } else {
-          pTable[match.away].won += 1;
-          pTable[match.away].points += 2;
-          pTable[match.away].ncd = (pTable[match.away].ncd || 0) + match.margin;
-          pTable[match.home].lost += 1;
-          pTable[match.home].ncd = (pTable[match.home].ncd || 0) - match.margin;
-        }
-      }
-    });
-
-    state.pointsTable = pTable;
-    setTournamentState(state);
-    if (user && !isGuest) {
-      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
-      set(tourRef, state).catch(err => console.error("Error saving simulated tournament to cloud:", err));
-    } else {
-      localStorage.setItem("savedTournamentState", JSON.stringify(state));
-    }
-  };
-
-  const advanceTournamentRound = () => {
-    if (!tournamentState) return;
-    const state = { ...tournamentState };
-
-    if (state.currentRoundIndex < 8) {
-      state.currentRoundIndex += 1;
-    } else {
-      // League finished! Check Top 4
-      const pTable = state.pointsTable;
-      const sorted = Object.keys(pTable)
-        .map(team => ({ name: team, ...pTable[team] }))
-        .sort((a, b) => {
-          if (b.points !== a.points) return b.points - a.points;
-          const aNCD = a.ncd || 0;
-          const bNCD = b.ncd || 0;
-          if (bNCD !== aNCD) return bNCD - aNCD;
-          if (b.won !== a.won) return b.won - a.won;
-          return a.name.localeCompare(b.name);
-        });
-
-      const top4 = sorted.slice(0, 4).map(t => t.name);
-      const playerIndex = top4.indexOf(state.playerTeam);
-
-      if (playerIndex === -1) {
-        state.stage = "eliminated";
-      } else {
-        const [team1, team2, team3, team4] = top4;
-        state.stage = "playoffs";
-        state.playoffs = {
-          q1: { home: team1, away: team2, played: false, winner: null, loser: null },
-          elim: { home: team3, away: team4, played: false, winner: null },
-          q2: { home: null, away: null, played: false, winner: null },
-          final: { home: null, away: null, played: false, winner: null }
-        };
-      }
-    }
-
-    setTournamentState(state);
-    if (user && !isGuest) {
-      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
-      set(tourRef, state).catch(err => console.error("Error saving advanced round to cloud:", err));
-    } else {
-      localStorage.setItem("savedTournamentState", JSON.stringify(state));
-    }
-  };
-
-  const simulatePlayoffMatch = (matchKey) => {
-    if (!tournamentState) return;
-    const state = { ...tournamentState };
-    const play = { ...state.playoffs };
-    const match = play[matchKey];
-
-    const ratingHome = TEAM_RATINGS[match.home.toLowerCase()] || 80;
-    const ratingAway = TEAM_RATINGS[match.away.toLowerCase()] || 80;
-    const probHome = ratingHome / (ratingHome + ratingAway);
-    const homeWins = Math.random() < probHome;
-
-    match.played = true;
-    match.winner = homeWins ? match.home : match.away;
-    if (matchKey === "q1") {
-      match.loser = homeWins ? match.away : match.home;
-    }
-
-    const isPlayerMatch = match.home === state.playerTeam || match.away === state.playerTeam;
-    const didPlayerLose = isPlayerMatch && (match.winner !== state.playerTeam);
-
-    if (didPlayerLose) {
-      if (matchKey === "elim" || matchKey === "q2" || matchKey === "final") {
-        state.stage = "eliminated";
-      }
-    }
-
-    if (matchKey === "final" && match.winner === state.playerTeam) {
-      state.stage = "champion";
-    }
-
-    if (play.q1.played && play.elim.played && !play.q2.played && !play.q2.home) {
-      play.q2.home = play.q1.loser;
-      play.q2.away = play.elim.winner;
-    }
-    if (play.q2.played && !play.final.played && !play.final.home) {
-      play.final.home = play.q1.winner;
-      play.final.away = play.q2.winner;
-    }
-
-    state.playoffs = play;
-    setTournamentState(state);
-    if (user && !isGuest) {
-      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
-      set(tourRef, state).catch(err => console.error("Error saving simulated playoff to cloud:", err));
-    } else {
-      localStorage.setItem("savedTournamentState", JSON.stringify(state));
-    }
-  };
-
-  // Helper: compute matchStats for the result screen
-  const buildMatchStats = (isPlayerWin) => ({
-    cardsWon: playerDeck.length,
-    cardsLost: aiDeck.length,
-    statHistory,
-    tournamentContext: tournamentState && activeTournamentMatch?.type === "league" ? {
-      roundIndex: activeTournamentMatch.roundIndex,
-      rank: (() => {
-        if (!tournamentState.pointsTable) return null;
-        const sorted = Object.keys(tournamentState.pointsTable)
-          .sort((a, b) => tournamentState.pointsTable[b].points - tournamentState.pointsTable[a].points);
-        return sorted.indexOf(tournamentState.playerTeam) + 1;
-      })(),
-      points: tournamentState.pointsTable?.[tournamentState.playerTeam]?.points ?? 0,
-    } : null,
-  });
-
-  // Helper: write a Hall of Fame entry when winning a tournament
-  const writeHallOfFameEntry = (state) => {
-    if (!state || state.stage !== "champion") return;
-    const record = state.pointsTable?.[state.playerTeam];
-    const entry = {
-      team: state.playerTeam,
-      date: new Date().toLocaleDateString("en-IN"),
-      leagueRecord: record ? `${record.won}W-${record.lost}L` : "9W-0L",
-      season: Date.now(),
-    };
-    const updated = [entry, ...hallOfFame].slice(0, 20); // keep last 20
-    setHallOfFame(updated);
-    if (user && !isGuest) {
-      const hofRef = ref(database, `users/${user.uid}/hallOfFame`);
-      set(hofRef, updated).catch(err => console.error("Error saving HoF:", err));
-    } else {
-      localStorage.setItem("ipl_hall_of_fame", JSON.stringify(updated));
-    }
-  };
 
   const clearSaveAndGoHome = () => {
     const roomId = localStorage.getItem("roomId");
@@ -1111,24 +740,7 @@ function App() {
   if (!user && !isGuest) {
     return (
       <>
-        {loginConflict && (
-          <div className="modal-overlay">
-            <div className="modal" style={{ textAlign: "center", maxWidth: 360 }}>
-              <div style={{ fontSize: 52, marginBottom: 12 }}>🚨</div>
-              <h2 style={{ color: "#ff4b2b", margin: "0 0 8px" }}>Multiple Logins</h2>
-              <p style={{ color: "#ccc", marginBottom: 24 }}>
-                This account is already logged in on another device.
-              </p>
-              <button
-                className="home-btn"
-                style={{ width: "100%", background: "linear-gradient(135deg, #ff4b2b, #ff416c)", border: "none", color: "#fff", padding: "12px", borderRadius: "8px", fontWeight: "bold" }}
-                onClick={() => setLoginConflict(false)}
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        )}
+        <LoginConflictModal isOpen={loginConflict} onClose={() => setLoginConflict(false)} />
         <LoginScreen 
           onContinueAsGuest={() => setIsGuest(true)} 
           onAuthSuccess={(finalUser) => setUser(finalUser)}
@@ -1227,6 +839,7 @@ function App() {
         advanceTournamentRound={advanceTournamentRound}
         simulatePlayoffMatch={simulatePlayoffMatch}
         hallOfFame={hallOfFame}
+        tournamentHistory={tournamentHistory}
       />
     );
   }
@@ -1286,56 +899,23 @@ function App() {
 
   return (
     <div>
-      {showConfirm && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <h2>Are you sure?</h2>
-            <p>
-              {gameMode === "tournament" && aiTeam
-                ? "Exiting mid-game will count as an automatic loss."
-                : "Your current game will be lost."}
-            </p>
-            <div className="modal-actions" style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
-              <button className="confirm-btn" onClick={confirmGoHome}>Yes</button>
-              <button className="cancel-btn" onClick={cancelGoHome}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ExitConfirmationModal 
+        isOpen={showConfirm} 
+        gameMode={gameMode} 
+        aiTeam={aiTeam} 
+        onConfirm={confirmGoHome} 
+        onCancel={cancelGoHome} 
+      />
 
-      {opponentDisconnected && (
-        <div className="modal-overlay">
-          <div className="modal" style={{ textAlign: "center", maxWidth: 360 }}>
-            <div style={{ fontSize: 52, marginBottom: 12 }}>⚠️</div>
-            <h2 style={{ color: "#ffc107", margin: "0 0 8px" }}>Connection Lost</h2>
-            <p style={{ color: "#ccc", marginBottom: 24 }}>
-              Opponent disconnected. Waiting for them to reconnect...
-            </p>
-            <div style={{ fontSize: 24, fontWeight: "bold", color: "#ffc107" }}>
-              {disconnectTimeLeft}s
-            </div>
-          </div>
-        </div>
-      )}
+      <ReconnectModal 
+        isOpen={opponentDisconnected} 
+        timeLeft={disconnectTimeLeft} 
+      />
 
-      {opponentLeft && (
-        <div className="modal-overlay">
-          <div className="modal" style={{ textAlign: "center", maxWidth: 360 }}>
-            <div style={{ fontSize: 52, marginBottom: 12 }}>👋</div>
-            <h2 style={{ color: "#ffd700", margin: "0 0 8px" }}>Opponent Left</h2>
-            <p style={{ color: "#ccc", marginBottom: 24 }}>
-              Your opponent has disconnected from the game.
-            </p>
-            <button
-              className="home-btn"
-              style={{ width: "100%" }}
-              onClick={() => { setOpponentLeft(false); confirmGoHome(); }}
-            >
-              Back to Home
-            </button>
-          </div>
-        </div>
-      )}
+      <OpponentLeftModal 
+        isOpen={opponentLeft} 
+        onClose={() => { setOpponentLeft(false); confirmGoHome(); }} 
+      />
 
       <div
         className="game"
@@ -1416,6 +996,7 @@ function App() {
             playerTeam={playerTeam}
             aiTeam={aiTeam}
             playerFranchisePool={playerFranchisePool}
+            superOverBanner={superOverBanner}
           />
         ) : (
           <div className="loading">Checking winner...</div>

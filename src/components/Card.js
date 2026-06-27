@@ -1,7 +1,7 @@
 import React, { forwardRef } from "react";
 import teamLogos from "../data/teamLogos";
 import back from "../assets/back.png";
-import { getModifiedStat, getRoundStage } from "../hooks/useGameEngine";
+import { getModifiedStat, getRoundStage } from "../utils/gameRules";
 
 // ✅ FIX: neutral cricket ball SVG used as fallback instead of silently
 // showing another team's (CSK) logo for unrecognised team names

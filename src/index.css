@@ -3599,3 +3599,63 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(255,215,0,0.3) transparent;
 }
+
+/* ============================================= */
+/* ⚡ SUPER OVER OVERLAY & ANIMATIONS            */
+/* ============================================= */
+.super-over-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 30%, #15092a 0%, #030107 70%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 20000;
+  animation: superOverFlash 1.5s infinite alternate;
+}
+
+.super-over-banner {
+  text-align: center;
+  color: #fff;
+  animation: superOverPulse 0.8s infinite alternate ease-in-out;
+}
+
+.super-over-title {
+  font-size: 72px;
+  font-weight: 900;
+  margin: 0;
+  letter-spacing: 4px;
+  background: linear-gradient(135deg, #ffd700, #ff5500);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 15px rgba(255, 85, 0, 0.7));
+  text-shadow: 0 0 25px rgba(255, 215, 0, 0.4);
+}
+
+.super-over-subtitle {
+  font-size: 20px;
+  font-weight: bold;
+  color: #ccc;
+  margin: 10px 0 0;
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+@keyframes superOverFlash {
+  0% {
+    background: radial-gradient(ellipse at 50% 30%, #15092a 0%, #030107 70%);
+  }
+  100% {
+    background: radial-gradient(ellipse at 50% 30%, #2b0c1e 0%, #05020c 70%);
+  }
+}
+
+@keyframes superOverPulse {
+  0% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1.04);
+  }
+}

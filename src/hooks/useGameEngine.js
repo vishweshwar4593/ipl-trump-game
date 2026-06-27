@@ -1,137 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import socket from "../socket";
-import { STAT_WEIGHTS } from "../App";
-
-export function getRoundStage(round) {
-  // Deterministic pseudo-random stage based on round number
-  const x = Math.sin(round * 724.3) * 10000;
-  const rand = x - Math.floor(x);
-  if (rand < 0.33) return "powerplay";
-  if (rand < 0.66) return "middle";
-  return "death";
-}
-
-const LOWER_BETTER = ["economy", "bowlingAvg", "bowlingSR"];
-const battingStats = ["runs", "matches", "hs", "battingAvg", "battingSR", "hundreds", "fifties", "catches"];
-const bowlingStats = ["wickets", "economy", "bowlingAvg", "bowlingSR"];
-
-const SPINNERS = [
-  "yuzvendra chahal", "rashid khan", "sunil narine", "ravichandran ashwin", 
-  "amit mishra", "piyush chawla", "harbhajan singh", "imran tahir", 
-  "krunal pandya", "ravindra jadeja", "axar patel", "varun chakravarthy", 
-  "kuldeep yadav", "maheesh theekshana", "murugan ashwin", "karn sharma",
-  "k gowtham", "krishnappa gowtham", "lalit yadav", "mark watt", "shakib al hasan"
-];
-
-export function getPlayerRole(playerCard) {
-  if (!playerCard) return "unknown";
-  const nameLower = playerCard.name ? playerCard.name.trim().toLowerCase() : "";
-  const wickets = playerCard.wickets ?? 0;
-  const runs = playerCard.runs ?? 0;
-
-  const isSpinner = SPINNERS.some(s => nameLower.includes(s));
-  if (isSpinner) return "spinner";
-
-  const isPace = wickets > 30 && runs < wickets * 15;
-  if (isPace) return "pace";
-
-  if (runs > 1000 || (playerCard.battingAvg ?? 0) > 24) return "batsman";
-
-  return "allrounder";
-}
-
-const getNextWeather = (currentWeather, roundNumber) => {
-  const rand = Math.random();
-  if (currentWeather === "sunny") {
-    if (rand < 0.70) return "sunny";
-    if (rand < 0.90) return "windy";
-    return "cloudy";
-  }
-  if (currentWeather === "cloudy") {
-    if (rand < 0.60) return "cloudy";
-    if (rand < 0.85) return "sunny";
-    return "windy";
-  }
-  if (currentWeather === "windy") {
-    if (roundNumber >= 5 && rand < 0.20) return "dew";
-    if (rand < 0.60) return "windy";
-    if (rand < 0.85) return "sunny";
-    return "cloudy";
-  }
-  if (currentWeather === "dew") {
-    if (rand < 0.70) return "dew";
-    if (rand < 0.90) return "windy";
-    return "cloudy";
-  }
-  return "sunny";
-};
-
-export function getModifiedStat(playerCard, statKey, pitchCondition, weather, moisture) {
-  if (!playerCard) return 0;
-  const originalValue = playerCard[statKey] ?? 0;
-  if (!pitchCondition || !weather || moisture === undefined || moisture === null) return originalValue;
-
-  const role = getPlayerRole(playerCard);
-  const runs = playerCard.runs ?? 0;
-  const isPowerHitter = (playerCard.battingSR ?? 0) >= 130 && runs > 300;
-
-  let multiplier = 1.0;
-
-  // Pace Bowler Modifiers
-  if (role === "pace") {
-    if (statKey === "wickets") {
-      if (moisture >= 75) multiplier += 0.20; // Wet Pitch
-      if (weather === "cloudy") multiplier += 0.15; // Cloudy Swing
-      if (weather === "dew") multiplier -= 0.15; // Dew slip
-    }
-    if (statKey === "economy") {
-      if (weather === "cloudy") multiplier -= 0.10; // Better control
-      if (weather === "dew") multiplier += 0.20; // Worse control
-    }
-  }
-
-  // Spin Bowler Modifiers
-  if (role === "spinner") {
-    if (statKey === "wickets") {
-      if (moisture < 25) multiplier += 0.30; // Cracked Pitch
-      else if (moisture < 50) multiplier += 0.15; // Dry Pitch
-      if (weather === "sunny") multiplier += 0.10; // Sun bake grip
-      if (weather === "dew") multiplier -= 0.25; // Dew slip
-    }
-    if (statKey === "economy") {
-      if (moisture < 25) multiplier -= 0.15; // Hard to play spin
-      if (weather === "dew") multiplier += 0.30; // Dew boundary hitting
-    }
-  }
-
-  // Batsman Modifiers
-  if (role === "batsman" || role === "allrounder") {
-    if (statKey === "runs") {
-      if (weather === "dew") multiplier += 0.15; // True bounce scoring
-      if (weather === "windy" && isPowerHitter) multiplier += 0.15; // Wind assisted boundaries
-    }
-    if (statKey === "battingSR") {
-      if (moisture >= 75) multiplier -= 0.15; // Sticky pitch
-      if (weather === "dew") multiplier += 0.10; // Slides on bat
-      if (weather === "windy" && isPowerHitter) multiplier += 0.15; // Wind assisted SR
-    }
-    if (statKey === "battingAvg") {
-      if (moisture < 25) multiplier -= 0.15; // Uneven bounce cracking
-    }
-  }
-
-  // Apply final multiplier based on stat type
-  if (statKey === "wickets" || statKey === "runs" || statKey === "hs") {
-    return Math.round(originalValue * multiplier);
-  }
-  
-  if (["economy", "bowlingAvg", "bowlingSR", "battingAvg", "battingSR"].includes(statKey)) {
-    const decimals = ["economy", "bowlingAvg", "battingAvg"].includes(statKey) ? 2 : 1;
-    return Number((originalValue * multiplier).toFixed(decimals));
-  }
-
-  return originalValue;
-}
+import { 
+  getRoundStage, 
+  getPlayerRole, 
+  getModifiedStat, 
+  getNextWeather, 
+  LOWER_BETTER, 
+  battingStats, 
+  bowlingStats, 
+  STAT_WEIGHTS 
+} from "../utils/gameRules";
 
 const getClutchReplacementsScore = (card, gameMode, round, pitchCondition, weather, moisture) => {
   if (!card) return 0;
@@ -236,6 +114,8 @@ export function useGameEngine({
   const [aiFranchisePool, setAiFranchisePool] = useState([]);
   const [turn, setTurn] = useState(null);
   const [drawPile, setDrawPile] = useState([]);
+  const [superOverActive, setSuperOverActive] = useState(false);
+  const [superOverBanner, setSuperOverBanner] = useState(false);
   const [showPlayerCard, setShowPlayerCard] = useState(false);
   const [showAiCard, setShowAiCard] = useState(false);
   const [playerHP, setPlayerHP] = useState(MAX_HP);
@@ -371,6 +251,8 @@ export function useGameEngine({
       setSwapAnnouncement(null);
       setGameOver(false);
       setOverAnnouncement(null);
+      setSuperOverActive(false);
+      setSuperOverBanner(false);
       return;
     }
     // For offline team mode, wait until both teams are chosen locally.
@@ -469,6 +351,8 @@ export function useGameEngine({
     setSwapAnnouncement(null);
     setGameOver(false);
     setOverAnnouncement(null);
+    setSuperOverActive(false);
+    setSuperOverBanner(false);
   // onlineRole intentionally removed — no longer used in this effect.
   }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle, tournamentState]);
 
@@ -741,6 +625,43 @@ const handleTurnTimeout = useCallback(() => {
       } else {
         if (gameMode === "team" || gameMode === "tournament") {
           setDrawPile([]);
+          if (playerDeck.length === 1 && aiDeck.length === 1) {
+            // Trigger Super Over!
+            setSuperOverActive(true);
+            setSuperOverBanner(true);
+
+            // Pull next cards from pool or master list
+            let nextPlayerCard = playerFranchisePool[0];
+            let nextAiCard = aiFranchisePool[0];
+
+            if (nextPlayerCard) {
+              setPlayerFranchisePool(prev => prev.slice(1));
+            } else {
+              const teamCards = players.filter(p => p.team === playerTeam);
+              nextPlayerCard = teamCards[Math.floor(Math.random() * teamCards.length)];
+            }
+
+            if (nextAiCard) {
+              setAiFranchisePool(prev => prev.slice(1));
+            } else {
+              const teamCards = players.filter(p => p.team === aiTeam);
+              nextAiCard = teamCards[Math.floor(Math.random() * teamCards.length)];
+            }
+
+            setTimeout(() => {
+              setSuperOverBanner(false);
+              setPlayerDeck([nextPlayerCard]);
+              setAiDeck([nextAiCard]);
+
+              setSelectedStat(null);
+              setWinner(null);
+              setAnimate(false);
+              setShowAiCard(false);
+              setRound(prev => prev + 1);
+              setTurnTimerKey(prev => prev + 1);
+            }, 5000);
+            return;
+          }
         } else {
           setDrawPile(prev => shuffle([...prev, player, ai]));
         }
@@ -792,7 +713,7 @@ const handleTurnTimeout = useCallback(() => {
         setConsecutiveTurns(1);
       }
     }, 2000);
-  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode, round, playerDeck, aiDeck]);
+  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode, round, playerDeck, aiDeck, playerFranchisePool, aiFranchisePool, players]);
   // ✅ FIX 3: drawPile removed from deps — now read via drawPileRef to prevent stale closure
 
   // ✅ FIX 2: Keep a stable ref to the latest handleStatClick so the socket listener
@@ -1183,6 +1104,8 @@ const handleTurnTimeout = useCallback(() => {
     overAnnouncement, setOverAnnouncement,
     swapTimer, setSwapTimer,
     statHistory,
-    wasEverBehind
+    wasEverBehind,
+    superOverActive,
+    superOverBanner
   };
 }

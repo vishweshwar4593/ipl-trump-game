@@ -1,5 +1,5 @@
 import { useAuth } from "../context/AuthContext";
-import { getRoundStage } from "../hooks/useGameEngine";
+import { getRoundStage } from "../utils/gameRules";
 
 function GameHeader({
   round,

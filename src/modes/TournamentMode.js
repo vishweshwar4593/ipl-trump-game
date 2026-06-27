@@ -35,7 +35,8 @@ function TournamentMode({
   simulateAllRemainingMatches,
   advanceTournamentRound,
   simulatePlayoffMatch,
-  hallOfFame = []
+  hallOfFame = [],
+  tournamentHistory = []
 }) {
   const [activeTab, setActiveTab] = useState("table");
   const [resetContext, setResetContext] = useState(null); // null | "active_reset" | "new_campaign"
@@ -376,7 +377,7 @@ function TournamentMode({
                 style={{ flex: 1, border: "none", margin: 0, padding: "12px", minWidth: "80px", background: activeTab === "hof" ? "linear-gradient(135deg, #ffd700, #ff8c00)" : "transparent", color: activeTab === "hof" ? "#000" : "#ffd700" }}
                 onClick={() => setActiveTab("hof")}
               >
-                🏆 HoF
+                🏆 History
               </button>
             </div>
 
@@ -562,39 +563,73 @@ function TournamentMode({
 
             {activeTab === "hof" && (
               <div style={{ width: "100%", maxHeight: "380px", overflowY: "auto", textAlign: "left" }}>
-                <h3 style={{ color: "#ffd700", margin: "0 0 16px 0" }}>🏆 Hall of Fame — Champion Campaigns</h3>
-                {hallOfFame.length === 0 ? (
+                <h3 style={{ color: "#ffd700", margin: "0 0 16px 0" }}>🏆 Campaign History & Hall of Fame</h3>
+                {tournamentHistory.length === 0 && hallOfFame.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "40px 20px", color: "#666" }}>
                     <div style={{ fontSize: "60px", marginBottom: "16px", filter: "grayscale(1)" }}>🏆</div>
-                    <p style={{ fontSize: "15px" }}>No champions yet. Win a Tournament to be immortalised here!</p>
+                    <p style={{ fontSize: "15px" }}>No campaigns played yet. Complete a campaign to see it here!</p>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "12px" }}>
-                    {hallOfFame.map((entry, idx) => {
-                      const teamKey = entry.team?.trim().toLowerCase();
-                      const logo = teamLogos[teamKey] || FALLBACK_LOGO;
-                      return (
-                        <div key={idx} style={{
-                          display: "flex", alignItems: "center", gap: "16px",
-                          padding: "14px 18px",
-                          background: idx === 0 ? "rgba(255,215,0,0.12)" : "rgba(255,255,255,0.03)",
-                          border: idx === 0 ? "1px solid rgba(255,215,0,0.4)" : "1px solid rgba(255,255,255,0.06)",
-                          borderRadius: "12px"
-                        }}>
-                          <div style={{ fontSize: "24px", minWidth: "32px", textAlign: "center" }}>
-                            {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`}
-                          </div>
-                          <img src={logo} alt={entry.team} style={{ width: "36px", height: "36px", objectFit: "contain" }} />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: "bold", color: idx === 0 ? "#ffd700" : "#fff", fontSize: "15px" }}>{entry.team}</div>
-                            <div style={{ fontSize: "12px", color: "#aaa", marginTop: "2px" }}>
-                              {entry.leagueRecord} league record · {entry.date}
+                    {tournamentHistory.length > 0
+                      ? tournamentHistory.map((entry, idx) => {
+                          const isChamp = entry.stageReached === "champion";
+                          const teamKey = entry.playerTeam?.trim().toLowerCase();
+                          const logo = teamLogos[teamKey] || FALLBACK_LOGO;
+                          return (
+                            <div key={idx} style={{
+                              display: "flex", alignItems: "center", gap: "16px",
+                              padding: "14px 18px",
+                              background: isChamp ? "rgba(255,215,0,0.12)" : "rgba(255,255,255,0.03)",
+                              border: isChamp ? "1px solid rgba(255,215,0,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                              borderRadius: "12px"
+                            }}>
+                              <img src={logo} alt={entry.playerTeam} style={{ width: "36px", height: "36px", objectFit: "contain" }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: "bold", color: isChamp ? "#ffd700" : "#fff", fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <span>{entry.playerTeam}</span>
+                                  {isChamp ? (
+                                    <span style={{ color: "#ffd700", fontSize: "11px", background: "rgba(255,215,0,0.15)", padding: "2px 6px", borderRadius: "4px", fontWeight: "bold" }}>🏆 CHAMPIONS</span>
+                                  ) : (
+                                    <span style={{ color: "#ff4d4d", fontSize: "11px", background: "rgba(255,77,77,0.12)", padding: "2px 6px", borderRadius: "4px", fontWeight: "bold" }}>ELIMINATED</span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: "12px", color: "#aaa", marginTop: "4px" }}>
+                                  League Record: <strong>{entry.leagueRecord}</strong> &middot; Tournament Winner: <strong style={{ color: entry.winner === entry.playerTeam ? "#ffd700" : "#fff" }}>{entry.winner}</strong>
+                                </div>
+                              </div>
+                              <div style={{ fontSize: "12px", color: "#666", textAlign: "right" }}>
+                                {entry.date}
+                              </div>
                             </div>
-                          </div>
-                          <div style={{ fontSize: "22px" }}>🏆</div>
-                        </div>
-                      );
-                    })}
+                          );
+                        })
+                      : hallOfFame.map((entry, idx) => {
+                          const teamKey = entry.team?.trim().toLowerCase();
+                          const logo = teamLogos[teamKey] || FALLBACK_LOGO;
+                          return (
+                            <div key={idx} style={{
+                              display: "flex", alignItems: "center", gap: "16px",
+                              padding: "14px 18px",
+                              background: idx === 0 ? "rgba(255,215,0,0.12)" : "rgba(255,255,255,0.03)",
+                              border: idx === 0 ? "1px solid rgba(255,215,0,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                              borderRadius: "12px"
+                            }}>
+                              <div style={{ fontSize: "24px", minWidth: "32px", textAlign: "center" }}>
+                                {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`}
+                              </div>
+                              <img src={logo} alt={entry.team} style={{ width: "36px", height: "36px", objectFit: "contain" }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: "bold", color: idx === 0 ? "#ffd700" : "#fff", fontSize: "15px" }}>{entry.team} 🏆</div>
+                                <div style={{ fontSize: "12px", color: "#aaa", marginTop: "2px" }}>
+                                  League Record: {entry.leagueRecord} &middot; Date: {entry.date}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: "22px" }}>🏆</div>
+                            </div>
+                          );
+                        })
+                    }
                   </div>
                 )}
               </div>
