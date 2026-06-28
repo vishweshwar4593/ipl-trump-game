@@ -250,6 +250,7 @@ function App() {
     hallOfFame,
     updateTournamentProgress,
     simulateLeagueMatch,
+    simulatePrecedingMatches,
     simulateAllRemainingMatches,
     advanceTournamentRound,
     simulatePlayoffMatch,
@@ -834,6 +835,7 @@ function App() {
           setActiveTournamentMatch(matchInfo);
         }}
         simulateLeagueMatch={simulateLeagueMatch}
+        simulatePrecedingMatches={simulatePrecedingMatches}
         simulateAllRemainingMatches={simulateAllRemainingMatches}
         advanceTournamentRound={advanceTournamentRound}
         simulatePlayoffMatch={simulatePlayoffMatch}

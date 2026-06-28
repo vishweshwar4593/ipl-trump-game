@@ -32,6 +32,7 @@ function TournamentMode({
   setTournamentState,
   startMatch,
   simulateLeagueMatch,
+  simulatePrecedingMatches,
   simulateAllRemainingMatches,
   advanceTournamentRound,
   simulatePlayoffMatch,
@@ -40,7 +41,20 @@ function TournamentMode({
 }) {
   const [activeTab, setActiveTab] = useState("table");
   const [resetContext, setResetContext] = useState(null); // null | "active_reset" | "new_campaign"
-  const [autoAdvance, setAutoAdvance] = useState(false);
+  const [autoAdvance, setAutoAdvance] = useState(() => {
+    return localStorage.getItem("tournament_autoAdvance") === "true";
+  });
+  const [autoSimPreceding, setAutoSimPreceding] = useState(() => {
+    return localStorage.getItem("tournament_autoSimPreceding") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("tournament_autoAdvance", autoAdvance);
+  }, [autoAdvance]);
+
+  useEffect(() => {
+    localStorage.setItem("tournament_autoSimPreceding", autoSimPreceding);
+  }, [autoSimPreceding]);
 
   // Auto-Advance: after player completes match, sim remaining + advance round automatically
   useEffect(() => {
@@ -64,6 +78,21 @@ function TournamentMode({
       return () => clearTimeout(t);
     }
   }, [tournamentState, autoAdvance, advanceTournamentRound, simulateAllRemainingMatches]);
+
+  // Auto-Simulate Preceding Matches: if enabled, simulate preceding matches in round automatically
+  useEffect(() => {
+    if (!autoSimPreceding || !tournamentState || tournamentState.stage !== "league") return;
+    const { schedule, currentRoundIndex, playerTeam } = tournamentState;
+    if (!schedule || !schedule[currentRoundIndex]) return;
+    const roundMatches = schedule[currentRoundIndex];
+    const playerMatchIdx = roundMatches.findIndex(m => m.home === playerTeam || m.away === playerTeam);
+    if (playerMatchIdx <= 0) return;
+
+    const hasUnplayedPreceding = roundMatches.slice(0, playerMatchIdx).some(m => !m.played);
+    if (hasUnplayedPreceding) {
+      simulatePrecedingMatches();
+    }
+  }, [tournamentState, autoSimPreceding, simulatePrecedingMatches]);
 
   // Load state on mount if it exists, otherwise trigger franchise selection
   const selectFranchise = (team) => {
@@ -532,28 +561,55 @@ function TournamentMode({
                           ⚡ Simulate Remaining Matches
                         </button>
                       )}
-                      {/* Auto-Advance Toggle */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#aaa" }}>
-                        <span>⚡ Auto-Advance After My Match</span>
-                        <button
-                          onClick={() => setAutoAdvance(prev => !prev)}
-                          style={{
-                            width: "44px", height: "24px", borderRadius: "12px", border: "none", cursor: "pointer",
-                            background: autoAdvance ? "#39ff88" : "rgba(255,255,255,0.15)",
-                            position: "relative", transition: "background 0.3s", flexShrink: 0
-                          }}
-                          title={autoAdvance ? "Auto-Advance ON" : "Auto-Advance OFF"}
-                        >
-                          <span style={{
-                            position: "absolute", top: "3px",
-                            left: autoAdvance ? "23px" : "3px",
-                            width: "18px", height: "18px", borderRadius: "50%",
-                            background: "#fff", transition: "left 0.3s"
-                          }} />
-                        </button>
-                        <span style={{ color: autoAdvance ? "#39ff88" : "#666", fontWeight: "bold", fontSize: "11px" }}>
-                          {autoAdvance ? "ON" : "OFF"}
-                        </span>
+                      {/* Toggles Container */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "center", marginTop: "8px" }}>
+                        {/* Auto-Simulate Preceding Toggle */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#aaa" }}>
+                          <span>⚡ Auto-Simulate Preceding Matches</span>
+                          <button
+                            onClick={() => setAutoSimPreceding(prev => !prev)}
+                            style={{
+                              width: "44px", height: "24px", borderRadius: "12px", border: "none", cursor: "pointer",
+                              background: autoSimPreceding ? "#39ff88" : "rgba(255,255,255,0.15)",
+                              position: "relative", transition: "background 0.3s", flexShrink: 0
+                            }}
+                            title={autoSimPreceding ? "Auto-Simulate Preceding ON" : "Auto-Simulate Preceding OFF"}
+                          >
+                            <span style={{
+                              position: "absolute", top: "3px",
+                              left: autoSimPreceding ? "23px" : "3px",
+                              width: "18px", height: "18px", borderRadius: "50%",
+                              background: "#fff", transition: "left 0.3s"
+                            }} />
+                          </button>
+                          <span style={{ color: autoSimPreceding ? "#39ff88" : "#666", fontWeight: "bold", fontSize: "11px" }}>
+                            {autoSimPreceding ? "ON" : "OFF"}
+                          </span>
+                        </div>
+
+                        {/* Auto-Advance Toggle */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#aaa" }}>
+                          <span>⚡ Auto-Advance After My Match</span>
+                          <button
+                            onClick={() => setAutoAdvance(prev => !prev)}
+                            style={{
+                              width: "44px", height: "24px", borderRadius: "12px", border: "none", cursor: "pointer",
+                              background: autoAdvance ? "#39ff88" : "rgba(255,255,255,0.15)",
+                              position: "relative", transition: "background 0.3s", flexShrink: 0
+                            }}
+                            title={autoAdvance ? "Auto-Advance ON" : "Auto-Advance OFF"}
+                          >
+                            <span style={{
+                              position: "absolute", top: "3px",
+                              left: autoAdvance ? "23px" : "3px",
+                              width: "18px", height: "18px", borderRadius: "50%",
+                              background: "#fff", transition: "left 0.3s"
+                            }} />
+                          </button>
+                          <span style={{ color: autoAdvance ? "#39ff88" : "#666", fontWeight: "bold", fontSize: "11px" }}>
+                            {autoAdvance ? "ON" : "OFF"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -725,6 +781,30 @@ function TournamentMode({
                       >
                         {isPlayerMatchUnlocked ? "🤖 Play vs AI Match" : "🔒 Match Locked"}
                       </button>
+
+                      {/* Auto-Simulate Toggle in next match panel */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#aaa", marginTop: "10px" }}>
+                        <span>⚡ Auto-Simulate Preceding Matches</span>
+                        <button
+                          onClick={() => setAutoSimPreceding(prev => !prev)}
+                          style={{
+                            width: "44px", height: "24px", borderRadius: "12px", border: "none", cursor: "pointer",
+                            background: autoSimPreceding ? "#39ff88" : "rgba(255,255,255,0.15)",
+                            position: "relative", transition: "background 0.3s", flexShrink: 0
+                          }}
+                          title={autoSimPreceding ? "Auto-Simulate Preceding ON" : "Auto-Simulate Preceding OFF"}
+                        >
+                          <span style={{
+                            position: "absolute", top: "3px",
+                            left: autoSimPreceding ? "23px" : "3px",
+                            width: "18px", height: "18px", borderRadius: "50%",
+                            background: "#fff", transition: "left 0.3s"
+                          }} />
+                        </button>
+                        <span style={{ color: autoSimPreceding ? "#39ff88" : "#666", fontWeight: "bold", fontSize: "11px" }}>
+                          {autoSimPreceding ? "ON" : "OFF"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ) : (

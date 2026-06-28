@@ -479,6 +479,62 @@ export function useTournamentCampaign({
     }
   }, [tournamentState, user, isGuest]);
 
+  const simulatePrecedingMatches = useCallback(() => {
+    if (!tournamentState) return;
+    const state = { ...tournamentState };
+    const roundMatches = state.schedule[state.currentRoundIndex];
+    const pTable = { ...state.pointsTable };
+    const playerTeam = state.playerTeam;
+
+    const playerMatchIdx = roundMatches.findIndex(m => m.home === playerTeam || m.away === playerTeam);
+    if (playerMatchIdx <= 0) return;
+
+    let updated = false;
+    for (let idx = 0; idx < playerMatchIdx; idx++) {
+      const match = roundMatches[idx];
+      if (!match.played) {
+        const ratingHome = TEAM_RATINGS[match.home.toLowerCase()] || 80;
+        const ratingAway = TEAM_RATINGS[match.away.toLowerCase()] || 80;
+        const probHome = ratingHome / (ratingHome + ratingAway);
+        const homeWins = Math.random() < probHome;
+
+        match.played = true;
+        match.winner = homeWins ? match.home : match.away;
+        match.loser = homeWins ? match.away : match.home;
+        match.margin = Math.floor(Math.random() * 5) + 1;
+
+        pTable[match.home].played += 1;
+        pTable[match.away].played += 1;
+
+        if (homeWins) {
+          pTable[match.home].won += 1;
+          pTable[match.home].points += 2;
+          pTable[match.home].ncd = (pTable[match.home].ncd || 0) + match.margin;
+          pTable[match.away].lost += 1;
+          pTable[match.away].ncd = (pTable[match.away].ncd || 0) - match.margin;
+        } else {
+          pTable[match.away].won += 1;
+          pTable[match.away].points += 2;
+          pTable[match.away].ncd = (pTable[match.away].ncd || 0) + match.margin;
+          pTable[match.home].lost += 1;
+          pTable[match.home].ncd = (pTable[match.home].ncd || 0) - match.margin;
+        }
+        updated = true;
+      }
+    }
+
+    if (!updated) return;
+
+    state.pointsTable = pTable;
+    setTournamentState(state);
+    if (user && !isGuest) {
+      const tourRef = ref(database, `users/${user.uid}/savedTournamentState`);
+      set(tourRef, state).catch(err => console.error("Error saving simulated tournament to cloud:", err));
+    } else {
+      localStorage.setItem("savedTournamentState", JSON.stringify(state));
+    }
+  }, [tournamentState, user, isGuest]);
+
   const advanceTournamentRound = useCallback(() => {
     if (!tournamentState) return;
     const state = { ...tournamentState };
@@ -608,6 +664,7 @@ export function useTournamentCampaign({
     setHallOfFame,
     updateTournamentProgress,
     simulateLeagueMatch,
+    simulatePrecedingMatches,
     simulateAllRemainingMatches,
     advanceTournamentRound,
     simulatePlayoffMatch,

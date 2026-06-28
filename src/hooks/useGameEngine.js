@@ -585,8 +585,15 @@ const handleTurnTimeout = useCallback(() => {
 
     setTimeout(() => setAnimate(true), 500);
 
-    // Feature 3: record stat used and round result
-    setStatHistory(prev => [...prev, { stat, result }]);
+    // Feature 3: record stat used and round result with detailed values
+    setStatHistory(prev => [...prev, {
+      stat,
+      result,
+      playerCard: player.name,
+      aiCard: ai.name,
+      playerValue,
+      aiValue
+    }]);
 
     setTimeout(() => {
       if (result === "player") {

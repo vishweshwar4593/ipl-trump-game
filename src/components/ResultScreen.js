@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const STAT_LABELS = {
   runs: "Runs",
@@ -19,6 +19,8 @@ const BATTING_STATS = new Set(["runs", "matches", "hs", "battingAvg", "battingSR
 const BOWLING_STATS = new Set(["wickets", "economy", "bowlingAvg", "bowlingSR"]);
 
 function ResultScreen({ title, buttonText = "Back to Home", onBack, matchStats }) {
+  const [showSummary, setShowSummary] = useState(false);
+
   const isWin  = title.toLowerCase().includes("player wins") ||
                  title.toLowerCase().includes("player 1 wins") ||
                  title.toLowerCase().includes("player 2 wins") ||
@@ -28,6 +30,20 @@ function ResultScreen({ title, buttonText = "Back to Home", onBack, matchStats }
 
   const icon    = isWin ? "🏆" : isDraw ? "🤝" : "😈";
   const variant = isWin ? "result-win" : isDraw ? "result-draw" : "result-loss";
+
+  const getComparisonSign = (stat, pVal, aVal, winner) => {
+    if (pVal === aVal) return "=";
+    const isLowerBetter = ["economy", "bowlingAvg", "bowlingSR"].includes(stat);
+    if (winner === "player") {
+      return isLowerBetter ? "<" : ">";
+    } else if (winner === "ai") {
+      return isLowerBetter ? ">" : "<";
+    } else {
+      if (pVal > aVal) return ">";
+      if (pVal < aVal) return "<";
+      return "=";
+    }
+  };
 
   /* simple particle burst on win */
   const canvasRef = useRef(null);
@@ -159,6 +175,57 @@ function ResultScreen({ title, buttonText = "Back to Home", onBack, matchStats }
             <span>📍 Round {tournamentContext.roundIndex + 1}/9</span>
             <span>🏅 Rank #{tournamentContext.rank}</span>
             <span>⭐ {tournamentContext.points} pts</span>
+          </div>
+        )}
+
+        {/* Match Summary Toggle & Round Details */}
+        {statHistory.length > 0 && (
+          <div className="stats-summary-wrapper">
+            <button 
+              className={`summary-toggle-btn ${showSummary ? "active" : ""}`}
+              onClick={() => setShowSummary(!showSummary)}
+              type="button"
+            >
+              <span>{showSummary ? "Hide Match Summary" : "Show Match Summary"}</span>
+              <span className="arrow-icon">{showSummary ? "▲" : "▼"}</span>
+            </button>
+
+            <div className={`summary-collapse-container ${showSummary ? "expanded" : ""}`}>
+              <div className="summary-rounds-list">
+                {statHistory.map((round, idx) => {
+                  const { stat, result, playerCard, aiCard, playerValue, aiValue } = round;
+                  const sign = getComparisonSign(stat, playerValue, aiValue, result);
+                  const roundClass = result === "player" ? "round-win" : result === "ai" ? "round-loss" : "round-draw";
+                  const statusText = result === "player" ? "Won" : result === "ai" ? "Lost" : "Draw";
+                  const statLabel = STAT_LABELS[stat] || stat;
+
+                  return (
+                    <div key={idx} className={`summary-round-row ${roundClass}`}>
+                      <div className="round-num">Round {idx + 1}</div>
+                      
+                      <div className="round-matchup">
+                        <div className="summary-card player-side">
+                          <span className="summary-card-name">{playerCard || "Unknown"}</span>
+                          <span className="summary-card-val">{playerValue !== undefined ? playerValue : "-"}</span>
+                        </div>
+                        
+                        <div className="summary-stat-compare">
+                          <span className="summary-compare-sign">{sign}</span>
+                          <span className="summary-stat-label">{statLabel}</span>
+                        </div>
+                        
+                        <div className="summary-card ai-side">
+                          <span className="summary-card-val">{aiValue !== undefined ? aiValue : "-"}</span>
+                          <span className="summary-card-name">{aiCard || "Unknown"}</span>
+                        </div>
+                      </div>
+
+                      <div className="round-status">{statusText}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>
