@@ -44,7 +44,7 @@ const Card = forwardRef(({ player, type, onStatClick, winner, selectedStat, anim
   const isDeathOvers = stage === "death";
 
   const isStatEligible = (key) => {
-    if (gameMode !== "team" && gameMode !== "tournament") return true;
+    if (gameMode !== "tournament") return true;
     if (isPowerplay) {
       return ['runs', 'hs', 'battingAvg', 'battingSR', 'hundreds', 'fifties'].includes(key);
     }

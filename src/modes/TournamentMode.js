@@ -26,6 +26,7 @@ function generateSchedule(teams) {
 function TournamentMode({
   teams,
   setGameMode,
+  gameMode,
   playStyle,
   setPlayStyle,
   tournamentState,
@@ -40,6 +41,7 @@ function TournamentMode({
   tournamentHistory = []
 }) {
   const [activeTab, setActiveTab] = useState("table");
+  const [oversLimit, setOversLimit] = useState(5);
   const [resetContext, setResetContext] = useState(null); // null | "active_reset" | "new_campaign"
   const [autoAdvance, setAutoAdvance] = useState(() => {
     return localStorage.getItem("tournament_autoAdvance") === "true";
@@ -112,7 +114,9 @@ function TournamentMode({
       schedule: generatedSchedule,
       currentRoundIndex: 0, // 0 to 8 (9 rounds total)
       stage: "league", // "league", "playoffs", "champion", "eliminated"
-      playoffs: null
+      playoffs: null,
+      campaignType: gameMode === "team" ? "cricket" : "classic",
+      oversLimit: gameMode === "team" ? oversLimit : null
     };
 
     setTournamentState(newState);
@@ -184,13 +188,49 @@ function TournamentMode({
 
   // If no team is selected, show franchise selector
   if (!tournamentState || !tournamentState.playerTeam) {
+    const isCricket = gameMode === "team";
     return (
       <div className="home">
         <div className="home-container" style={{ maxWidth: 850 }}>
-          <h1>Road to the Trophy</h1>
+          <h1>{isCricket ? "IPL T20 Cricket Campaign" : "Road to the Trophy"}</h1>
           <p style={{ color: "#ccc", fontSize: "16px", marginBottom: "20px" }}>
-            Select your franchise to start the 9-match Campaign Tournament!
+            {isCricket 
+              ? "Choose your franchise and configure match length to start the T20 Cricket Campaign!"
+              : "Select your franchise to start the 9-match Campaign Tournament!"}
           </p>
+
+          {isCricket && (
+            <div style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: "15px",
+              padding: "20px",
+              marginBottom: "25px",
+              textAlign: "center"
+            }}>
+              <h3 style={{ margin: "0 0 12px 0", color: "#ffd700" }}>Select Match Duration (Overs)</h3>
+              <div style={{ display: "flex", justifyContent: "center", gap: "15px" }}>
+                {[5, 10, 20].map(overs => (
+                  <button
+                    key={overs}
+                    className="play-btn"
+                    style={{
+                      padding: "10px 20px",
+                      fontSize: "15px",
+                      backgroundColor: oversLimit === overs ? "#39ff88" : "rgba(255,255,255,0.05)",
+                      color: oversLimit === overs ? "#111" : "#fff",
+                      border: oversLimit === overs ? "1px solid #39ff88" : "1px solid rgba(255,255,255,0.1)",
+                      fontWeight: "bold",
+                      width: "auto"
+                    }}
+                    onClick={() => setOversLimit(overs)}
+                  >
+                    🏏 {overs} Overs
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="team-buttons" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px", width: "100%" }}>
             {teams.map(team => {
@@ -765,7 +805,9 @@ function TournamentMode({
                       </div>
                     </div>
                     <p style={{ margin: "0 0 20px 0", color: "#ccc", fontSize: "14px" }}>
-                      🔥 League Round: contested over **7 cards**!
+                      {tournamentState.campaignType === "cricket"
+                        ? `🔥 League Round: T20 Match of **${tournamentState.oversLimit} Overs**!`
+                        : "🔥 League Round: contested over **7 cards**!"}
                     </p>
                     <div style={{ display: "flex", gap: "12px", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                       {!isPlayerMatchUnlocked && (
@@ -781,30 +823,6 @@ function TournamentMode({
                       >
                         {isPlayerMatchUnlocked ? "🤖 Play vs AI Match" : "🔒 Match Locked"}
                       </button>
-
-                      {/* Auto-Simulate Toggle in next match panel */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#aaa", marginTop: "10px" }}>
-                        <span>⚡ Auto-Simulate Preceding Matches</span>
-                        <button
-                          onClick={() => setAutoSimPreceding(prev => !prev)}
-                          style={{
-                            width: "44px", height: "24px", borderRadius: "12px", border: "none", cursor: "pointer",
-                            background: autoSimPreceding ? "#39ff88" : "rgba(255,255,255,0.15)",
-                            position: "relative", transition: "background 0.3s", flexShrink: 0
-                          }}
-                          title={autoSimPreceding ? "Auto-Simulate Preceding ON" : "Auto-Simulate Preceding OFF"}
-                        >
-                          <span style={{
-                            position: "absolute", top: "3px",
-                            left: autoSimPreceding ? "23px" : "3px",
-                            width: "18px", height: "18px", borderRadius: "50%",
-                            background: "#fff", transition: "left 0.3s"
-                          }} />
-                        </button>
-                        <span style={{ color: autoSimPreceding ? "#39ff88" : "#666", fontWeight: "bold", fontSize: "11px" }}>
-                          {autoSimPreceding ? "ON" : "OFF"}
-                        </span>
-                      </div>
                     </div>
                   </div>
                 ) : (
@@ -870,7 +888,9 @@ function TournamentMode({
                             </div>
                           </div>
                           <p style={{ margin: "0 0 20px 0", color: "#ccc", fontSize: "14px" }}>
-                            ⚡ High Stakes: contested over **{cardCount} cards**!
+                            {tournamentState.campaignType === "cricket"
+                              ? `⚡ High Stakes: T20 Match of **${tournamentState.oversLimit} Overs**!`
+                              : `⚡ High Stakes: contested over **${cardCount} cards**!`}
                           </p>
                           <div style={{ display: "flex", gap: "12px", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                             {!isPlayoffMatchUnlocked && (

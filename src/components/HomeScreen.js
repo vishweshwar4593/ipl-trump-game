@@ -215,21 +215,29 @@ function HomeScreen({
                     </div>
 
                     <div className="mode-card">
-                        <div className="mode-icon">👥</div>
-                        <h3>Team Mode</h3>
-                        <span className="mode-tag">Franchise vs Franchise</span>
-                        <p>Select teams and battle team vs team.</p>
+                        <div className="mode-icon">🏏</div>
+                        <h3>IPL T20 Cricket Campaign</h3>
+                        <span className="mode-tag">T20 Cricket Simulator</span>
+                        <p>Lead your team through a full cricket league season with Overs, Toss, and Target Chasing.</p>
                         <div className="mode-actions">
-                            <button className="play-btn" onClick={() => setSelectedBaseMode("team")}>Play</button>
+                            <button
+                                className="play-btn"
+                                onClick={() => {
+                                    setPlayStyle("ai");
+                                    setGameMode("team");
+                                }}
+                            >
+                                Play
+                            </button>
                             <button className="rules-btn" onClick={() => setRulesMode("team")}>Rules</button>
                         </div>
                     </div>
 
                     <div className="mode-card">
                         <div className="mode-icon">🏆</div>
-                        <h3>Tournament</h3>
-                        <span className="mode-tag">Road to the Trophy</span>
-                        <p>Select your team and play a 9-match season with Playoffs.</p>
+                        <h3>IPL Classic Tournament</h3>
+                        <span className="mode-tag">Traditional Card campaign</span>
+                        <p>Select your team and play a 9-match season using standard card-capturing rules (7/9/11 card limits).</p>
                         <div className="mode-actions">
                             <button
                                 className="play-btn"

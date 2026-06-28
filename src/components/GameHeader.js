@@ -22,7 +22,14 @@ function GameHeader({
   weather,
   moisture,
   playerTeam,
-  aiTeam
+  aiTeam,
+  
+  // Cricket Props
+  cricketScore,
+  battingTeam,
+  currentInnings,
+  targetScore,
+  oversLimit
 }) {
   // logout is available if needed in future; mid-game we route through handleHomeClick
   const { logout } = useAuth(); // eslint-disable-line no-unused-vars
@@ -111,6 +118,48 @@ function GameHeader({
           </div>
         )}
 
+        {/* Cricket Live Scorecard */}
+        {gameMode === "team" && battingTeam && (
+          <div className="cricket-scorecard-header animate-pop" style={{ background: "rgba(0,0,0,0.5)", padding: "15px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.15)", marginTop: "15px", color: "#fff", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
+              <div style={{ textAlign: "center" }}>
+                <span style={{ fontSize: "11px", color: "#aaa", textTransform: "uppercase", letterSpacing: "0.1em" }}>Batting Team</span>
+                <h3 style={{ margin: "5px 0 0 0", color: "#ffd700" }}>{battingTeam === "player" ? playerTeam : aiTeam}</h3>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <span style={{ fontSize: "11px", color: "#aaa", textTransform: "uppercase", letterSpacing: "0.1em" }}>Score</span>
+                <h1 style={{ margin: "5px 0 0 0", fontSize: "32px", fontWeight: "bold" }}>
+                  {cricketScore[battingTeam].runs} / {cricketScore[battingTeam].wickets}
+                </h1>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <span style={{ fontSize: "11px", color: "#aaa", textTransform: "uppercase", letterSpacing: "0.1em" }}>Overs</span>
+                <h3 style={{ margin: "5px 0 0 0" }}>
+                  {cricketScore[battingTeam].oversCompleted} / {oversLimit}
+                </h3>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <span style={{ fontSize: "11px", color: "#aaa", textTransform: "uppercase", letterSpacing: "0.1em" }}>CRR</span>
+                <h3 style={{ margin: "5px 0 0 0", color: "#00aeff" }}>
+                  {(cricketScore[battingTeam].runs / (cricketScore[battingTeam].oversCompleted || 1)).toFixed(2)}
+                </h3>
+              </div>
+            </div>
+
+            {currentInnings === 2 && targetScore && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: "10px", marginTop: "5px", fontSize: "13px" }}>
+                <div>Target: <strong style={{ color: "#ffd700" }}>{targetScore}</strong></div>
+                <div>Need <strong style={{ color: "#ff4b2b", fontSize: "15px" }}>{Math.max(0, targetScore - cricketScore[battingTeam].runs)}</strong> runs off <strong style={{ color: "#00aeff" }}>{(oversLimit - cricketScore[battingTeam].oversCompleted) * 6}</strong> balls</div>
+                <div>
+                  Required RR: <strong style={{ color: "#00cfff" }}>
+                    {((targetScore - cricketScore[battingTeam].runs) / Math.max(0.1, oversLimit - cricketScore[battingTeam].oversCompleted)).toFixed(2)}
+                  </strong>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tactical Feature Banners */}
         {(gameMode === "time" || gameMode === "battle") && pitchCondition && (
           <div className="pitch-banner glass-banner animate-pop" style={{ borderRadius: '50px', padding: '8px 20px' }}>
@@ -124,7 +173,7 @@ function GameHeader({
           </div>
         )}
 
-        {(gameMode === "team" || gameMode === "tournament") && (
+        {gameMode === "tournament" && (
           <div className="phase-banner glass-banner animate-pop">
             {(getRoundStage(round) === "powerplay") && (
               <span style={{ color: "#ffd700" }}>⚡ Powerplay: Batting Stats Only</span>

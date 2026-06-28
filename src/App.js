@@ -4,12 +4,12 @@ import classicBg from "./assets/classic-bg.png";
 import battleBg from "./assets/battle-bg.png";
 import timeBg from "./assets/time-bg.png";
 import HomeScreen from "./components/HomeScreen";
-import TeamMode from "./modes/TeamMode";
 import TimeMode from "./modes/TimeMode";
 import ResultScreen from "./components/ResultScreen";
 import GameHeader from "./components/GameHeader";
 import GameBoard from "./components/GameBoard";
 import OnlineMode from "./modes/OnlineMode";
+import TossScreen from "./components/TossScreen";
 import LoginScreen from "./components/LoginScreen";
 import EmotePanel from "./components/EmotePanel";
 import socket from "./socket";
@@ -51,6 +51,7 @@ function App() {
   const [user, setUser] = useState(undefined);
   const [isGuest, setIsGuest] = useState(false);
   const [loginConflict, setLoginConflict] = useState(false);
+  const tournamentStateRef = useRef(null);
 
 
   // Generate or retrieve persistent guest UID
@@ -207,6 +208,7 @@ function App() {
   const [disconnectTimeLeft, setDisconnectTimeLeft] = useState(45);
   const disconnectTimerRef = useRef(null);
   const [hasUnlockedAchievementsForMatch, setHasUnlockedAchievementsForMatch] = useState(false);
+  const [tossCaller, setTossCaller] = useState(null);
 
   const isBattleMode = gameMode === "battle";
   const isMultiplayerMode = playStyle === "local";
@@ -234,17 +236,31 @@ function App() {
     playerFranchisePool,
     setPlayerFranchisePool,
     setAiFranchisePool,
-    superOverBanner
+    superOverBanner,
+    
+    // Cricket States & Functions
+    oversLimit,
+    currentInnings,
+    battingTeam, setBattingTeam,
+    targetScore,
+    matchIntensity,
+    overSummary,
+    overHistory,
+    cricketScore,
+    isInningsBreak,
+    cricketWinner,
+    startSecondInnings
   } = useGameEngine({
     gameMode, playStyle, isBattleMode, isMultiplayerMode, playerTeam, aiTeam,
     playClick, playWin, playLose, playHit, MAX_HP, players, resumedGameState, onlineRole,
-    user, isGuest, showConfirm
+    user, isGuest, showConfirm, tournamentStateRef
   });
 
   // Tournament Hook containing campaign simulation states and functions
   const {
     tournamentState,
     setTournamentState,
+    activeTournamentMatch,
     setActiveTournamentMatch,
     tournamentHistory,
     hallOfFame,
@@ -275,6 +291,8 @@ function App() {
     setAiFranchisePool,
     statHistory
   });
+
+  tournamentStateRef.current = tournamentState;
 
   const isGameplayActive = !!(
     gameMode && 
@@ -628,8 +646,8 @@ function App() {
     classic: { title: "Classic Mode Rules", points: ["Choose one stat from your top player card.", "Your stat is compared with the AI’s top card.", "Higher value wins the round.", "Winner collects both cards and draw pile cards.", "Game ends when one side gets all cards."] },
     time: { title: "Time Mode Rules", points: ["Play against AI within a fixed time limit.", "Choose stats quickly before time runs out.", "Winner is decided by number of cards when time ends.", "Fast decisions are important in this mode."] },
     battle: { title: "Battle Mode Rules", points: ["Both Player and AI start with HP.", "Winning a stat deals damage to opponent HP.", "Big stat difference causes more damage.", "Reduce opponent HP to zero to win."] },
-    team: { title: "Team Mode Rules", points: ["Choose your IPL team and opponent team.", "Only players from selected teams are used.", "Winning keeps your card in rotation.", "Draws discard both cards.", "Last team standing wins."] },
-    tournament: { title: "Tournament Rules", points: ["Select a franchise and campaign against the other 9 teams.", "Wins award 2 points on the Live Points Table. The other games are simulated in parallel.", "League matches feature 7 cards. Playoff matches feature 9 cards. The Grand Final features 11 cards.", "Finish in the Top 4 to qualify for the Playoffs (Q1, Eliminator, Q2, and Final) to claim the trophy!"] },
+    team: { title: "IPL T20 Cricket Campaign Rules", points: ["Select your team and play a full T20 Cricket Simulator campaign against 9 other franchises.", "Choose your overs duration: 5, 10, or 20 overs per match.", "Simulate real cricket matches with Coin Toss, Overs, Wickets, Targets, and Run Rate Chasing.", "Compare card statistics to score runs or take wickets.", "Finish in the Top 4 to enter the Playoffs and win the IPL Trophy!"] },
+    tournament: { title: "IPL Classic Tournament Rules", points: ["Select your team and campaign against the other 9 franchises in classic card-capturing matches.", "League matches feature 7 cards. Playoff matches feature 9 cards. The Grand Final features 11 cards.", "Compare stats and win cards to defeat the AI deck.", "Finish in the Top 4 to qualify for the Playoffs (Q1, Eliminator, Q2, and Final) to claim the trophy!"] },
     multiplayer: { title: "Multiplayer Mode Rules", points: ["Player 1 and Player 2 play on the same device.", "Only the current player's card is shown before selecting a stat.", "Choose one stat from your top card.", "Higher stat wins the round and takes both cards.", "Winner gets the next turn.", "Game ends when one player gets all cards."] },
     online: { title: "Online Multiplayer Rules", points: ["Play against another player online.", "Join using a room code.", "Turns are synced in real-time.", "Higher stat wins the round.", "Winner collects cards.", "Game ends when one player gets all cards."] }
   };
@@ -640,8 +658,8 @@ function App() {
   const confirmGoHome = () => {
     setShowConfirm(false);
 
-    // If we are exiting an active tournament match, record it as a loss (or simulate if spectator)
-    if (gameMode === "tournament" && aiTeam && playerDeck.length > 0 && aiDeck.length > 0) {
+    // If we are exiting an active campaign match, record it as a loss (or simulate if spectator)
+    if (!!activeTournamentMatch && aiTeam) {
       if (playStyle === "ai_vs_ai") {
         const ratingHome = TEAM_RATINGS[playerTeam.toLowerCase()] || 80;
         const ratingAway = TEAM_RATINGS[aiTeam.toLowerCase()] || 80;
@@ -774,18 +792,7 @@ function App() {
     );
   }
 
-  if (gameMode === "team" && (!playerTeam || !aiTeam) && playStyle !== "online") {
-    return (
-      <TeamMode
-        playerTeam={playerTeam}
-        setPlayerTeam={setPlayerTeam}
-        aiTeam={aiTeam}
-        setAiTeam={setAiTeam}
-        teams={teams}
-        setGameMode={setGameMode}
-      />
-    );
-  }
+
 
   if (gameMode === "time" && !selectedTime) {
     return (
@@ -814,16 +821,18 @@ function App() {
         setPitchCondition={setPitchCondition}
         setPlayerFranchisePool={setPlayerFranchisePool}
         setAiFranchisePool={setAiFranchisePool}
+        setTossCaller={setTossCaller}
         teams={teams}
       />
     );
   }
 
-  if (gameMode === "tournament" && !aiTeam && (!isOnlineGameStarted || playStyle !== "online")) {
+  if ((gameMode === "tournament" || gameMode === "team") && !aiTeam && (!isOnlineGameStarted || playStyle !== "online")) {
     return (
       <TournamentMode
         teams={teams}
         setGameMode={setGameMode}
+        gameMode={gameMode}
         playStyle={playStyle}
         setPlayStyle={setPlayStyle}
         tournamentState={tournamentState}
@@ -863,6 +872,30 @@ function App() {
   }
   if (isBattleMode && aiHP <= 0) {
     return <ResultScreen title={playStyle === "online" ? "YOU WIN 🏆" : "PLAYER WINS 🏆 (Battle Mode)"} buttonText="Back" onBack={clearSaveAndGoHome} matchStats={buildMatchStats(true)} />;
+  }
+
+  if (gameMode === "team" && playStyle !== "online" && (gameOver || cricketWinner)) {
+    const isPlayerWin = cricketWinner === "player";
+    const isCampaign = !!activeTournamentMatch;
+    let title = "";
+    if (cricketWinner === "tie") title = "MATCH TIED! 🤝";
+    else title = isPlayerWin ? "YOU WIN! 🏆" : "AI WINS! 😈";
+
+    return (
+      <ResultScreen
+        title={title}
+        buttonText={isCampaign ? "Continue Standings" : "Back to Home"}
+        onBack={isCampaign ? () => {
+          const runDiff = Math.abs(cricketScore.player.runs - cricketScore.ai.runs);
+          updateTournamentProgress(isPlayerWin, runDiff);
+        } : clearSaveAndGoHome}
+        gameMode="team"
+        cricketScore={cricketScore}
+        playerTeam={playerTeam}
+        aiTeam={aiTeam}
+        overHistory={overHistory}
+      />
+    );
   }
 
   if (playStyle !== "online" && (playerDeck.length === 0 || aiDeck.length === 0)) {
@@ -950,55 +983,89 @@ function App() {
           moisture={moisture}
           playerTeam={playerTeam}
           aiTeam={aiTeam}
+          cricketScore={cricketScore}
+          battingTeam={battingTeam}
+          currentInnings={currentInnings}
+          targetScore={targetScore}
+          oversLimit={oversLimit}
         />
 
         {player && ai ? (
-          <GameBoard
-            playerRef={playerRef}
-            playerCardRef={playerCardRef}
-            player={player}
-            animate={animate}
-            winner={winner}
-            aiCardRef={aiCardRef}
-            drawRef={drawRef}
-            ai={ai}
-            showPlayerCard={showPlayerCard}
-            showAiCard={showAiCard}
-            aiRef={aiRef}
-            turn={turn}
-            gameMode={gameMode}
-            isMultiplayerMode={isMultiplayerMode}
-            turnTimerKey={turnTimerKey}
-            playerDeck={playerDeck}
-            aiDeck={aiDeck}
-            drawPile={drawPile}
-            selectedStat={selectedStat}
-            handleStatClick={handleStatClick}
-            getMoveStyle={getMoveStyle}
-            isTimeoutActive={selectedStat === null && !gameOver && !animate && !swapModalOpen}
-            playStyle={playStyle}
-            turnTimeout={TURN_TIMEOUT}
-            pitchCondition={pitchCondition}
-            round={round}
-            weather={weather}
-            moisture={moisture}
-            playerSwapUsed={playerSwapUsed}
-            playerSwapsLeft={playerSwapsLeft}
-            swapModalOpen={swapModalOpen}
-            setSwapModalOpen={setSwapModalOpen}
-            swapCandidates={swapCandidates}
-            swapAnnouncement={swapAnnouncement}
-            swapGraceActive={swapGraceActive}
-            swapGraceTimeLeft={swapGraceTimeLeft}
-            handleOpenPlayerSwap={handleOpenPlayerSwap}
-            executePlayerSwap={executePlayerSwap}
-            overAnnouncement={overAnnouncement}
-            swapTimer={swapTimer}
-            playerTeam={playerTeam}
-            aiTeam={aiTeam}
-            playerFranchisePool={playerFranchisePool}
-            superOverBanner={superOverBanner}
-          />
+          turn === "toss" ? (
+            <TossScreen
+              playStyle={playStyle}
+              onlineRole={onlineRole}
+              tossCaller={tossCaller}
+              playerTeam={playerTeam || "Player"}
+              aiTeam={aiTeam || "Opponent"}
+              socket={socket}
+              gameMode={gameMode}
+              matchIntensity={matchIntensity}
+              onTossComplete={(finalTurn, tossDecision) => {
+                setTurn(finalTurn);
+                if (gameMode === "team") {
+                  setBattingTeam(finalTurn);
+                }
+              }}
+            />
+          ) : (
+            <GameBoard
+              playerRef={playerRef}
+              playerCardRef={playerCardRef}
+              player={player}
+              animate={animate}
+              winner={winner}
+              aiCardRef={aiCardRef}
+              drawRef={drawRef}
+              ai={ai}
+              showPlayerCard={showPlayerCard}
+              showAiCard={showAiCard}
+              aiRef={aiRef}
+              turn={turn}
+              gameMode={gameMode}
+              isMultiplayerMode={isMultiplayerMode}
+              turnTimerKey={turnTimerKey}
+              playerDeck={playerDeck}
+              aiDeck={aiDeck}
+              drawPile={drawPile}
+              selectedStat={selectedStat}
+              handleStatClick={handleStatClick}
+              getMoveStyle={getMoveStyle}
+              isTimeoutActive={selectedStat === null && !gameOver && !animate && !swapModalOpen}
+              playStyle={playStyle}
+              turnTimeout={TURN_TIMEOUT}
+              pitchCondition={pitchCondition}
+              round={round}
+              weather={weather}
+              moisture={moisture}
+              playerSwapUsed={playerSwapUsed}
+              playerSwapsLeft={playerSwapsLeft}
+              swapModalOpen={swapModalOpen}
+              setSwapModalOpen={setSwapModalOpen}
+              swapCandidates={swapCandidates}
+              swapAnnouncement={swapAnnouncement}
+              swapGraceActive={swapGraceActive}
+              swapGraceTimeLeft={swapGraceTimeLeft}
+              handleOpenPlayerSwap={handleOpenPlayerSwap}
+              executePlayerSwap={executePlayerSwap}
+              overAnnouncement={overAnnouncement}
+              swapTimer={swapTimer}
+              playerTeam={playerTeam}
+              aiTeam={aiTeam}
+              playerFranchisePool={playerFranchisePool}
+              superOverBanner={superOverBanner}
+              
+              battingTeam={battingTeam}
+              currentInnings={currentInnings}
+              targetScore={targetScore}
+              oversLimit={oversLimit}
+              cricketScore={cricketScore}
+              overHistory={overHistory}
+              isInningsBreak={isInningsBreak}
+              startSecondInnings={startSecondInnings}
+              overSummary={overSummary}
+            />
+          )
         ) : (
           <div className="loading">Checking winner...</div>
         )}

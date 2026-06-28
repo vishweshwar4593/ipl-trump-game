@@ -1,6 +1,7 @@
 import Card from "./Card.js";
 import { getPlayerRole } from "../utils/gameRules.js";
 import teamLogos from "../data/teamLogos.js";
+import { calculatePOTM } from "../utils/cricketEngine.js";
 
 const FALLBACK_LOGO = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23cc2200'/><path d='M50 5 Q70 30 70 50 Q70 70 50 95 Q30 70 30 50 Q30 30 50 5Z' fill='%23aa1100'/><path d='M5 50 Q30 30 50 30 Q70 30 95 50 Q70 70 50 70 Q30 70 5 50Z' fill='%23aa1100'/><path d='M50 5 Q70 30 70 50 Q70 70 50 95' stroke='%23f5e6c8' stroke-width='2' fill='none'/><path d='M5 50 Q30 30 50 30 Q70 30 95 50' stroke='%23f5e6c8' stroke-width='2' fill='none'/></svg>`;
 
@@ -48,7 +49,18 @@ function GameBoard({
     playerTeam,
     aiTeam,
     playerFranchisePool,
-    superOverBanner
+    superOverBanner,
+    
+    // Cricket Props
+    battingTeam,
+    currentInnings,
+    targetScore,
+    oversLimit,
+    cricketScore,
+    overHistory,
+    isInningsBreak,
+    startSecondInnings,
+    overSummary
 }) {
 
     // ✅ ADD THIS LINE
@@ -264,6 +276,63 @@ function GameBoard({
                         <p className="super-over-subtitle">Get Ready for the Ultimate Tiebreaker!</p>
                     </div>
                 </div>
+            )}
+
+            {/* Over Commentary Banner */}
+            {overSummary && (
+              <div className="over-summary-banner animate-slide-in" style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", background: "rgba(0, 0, 0, 0.85)", border: "2px solid #ffd700", padding: "20px 40px", borderRadius: "16px", color: "#fff", zIndex: 1000, textAlign: "center", boxShadow: "0 0 20px rgba(255, 215, 0, 0.4)", display: "flex", flexDirection: "column", gap: "8px", minWidth: "300px" }}>
+                <div style={{ fontSize: "11px", color: "#ffd700", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.2em" }}>🏏 OVER COMMENTARY</div>
+                <p style={{ margin: 0, fontSize: "18px", fontWeight: "bold" }}>{overSummary}</p>
+              </div>
+            )}
+
+            {/* Innings Break Screen Overlay */}
+            {isInningsBreak && battingTeam && (
+              <div className="innings-break-overlay animate-fade-in" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0, 0, 0, 0.85)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
+                <div className="innings-break-card animate-scale-up glass-card" style={{ background: "rgba(20, 20, 20, 0.95)", border: "2px solid rgba(255, 215, 0, 0.3)", padding: "30px", borderRadius: "20px", maxWidth: "450px", width: "90%", color: "#fff", textAlign: "center", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+                  <div style={{ fontSize: "11px", color: "#ff4b2b", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: "15px" }}>🔴 LIVE MATCH CENTRE</div>
+                  <h2 style={{ margin: "0 0 10px 0", color: "#aaa" }}>🏏 End of Innings 1</h2>
+                  
+                  <div style={{ margin: "25px 0", padding: "15px", background: "rgba(255,255,255,0.03)", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <h1 style={{ margin: "0 0 10px 0", color: "#ffd700" }}>{battingTeam === "player" ? playerTeam : aiTeam}</h1>
+                    <div style={{ fontSize: "40px", fontWeight: "bold", letterSpacing: "1px" }}>
+                      {cricketScore[battingTeam].runs} / {cricketScore[battingTeam].wickets}
+                    </div>
+                    <p style={{ margin: "10px 0 0 0", color: "#aaa", fontSize: "14px" }}>
+                      Overs played: {cricketScore[battingTeam].oversCompleted} / {oversLimit} &nbsp;&bull;&nbsp; CRR: {(cricketScore[battingTeam].runs / (cricketScore[battingTeam].oversCompleted || 1)).toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "15px", margin: "20px 0" }}>
+                    <div style={{ flex: 1, padding: "10px", background: "rgba(0,0,0,0.4)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                      <span style={{ fontSize: "10px", color: "#aaa", textTransform: "uppercase" }}>Highest Over Runs</span>
+                      <h3 style={{ margin: "5px 0 0 0", color: "#00cfff" }}>
+                        {overHistory.reduce((max, o) => o.runs > max ? o.runs : max, 0)} Runs
+                      </h3>
+                    </div>
+                    <div style={{ flex: 1, padding: "10px", background: "rgba(0,0,0,0.4)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                      <span style={{ fontSize: "10px", color: "#aaa", textTransform: "uppercase" }}>Top Performer</span>
+                      <h3 style={{ margin: "5px 0 0 0", color: "#00ff88", fontSize: "14px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={calculatePOTM(overHistory)?.name || "N/A"}>
+                        {calculatePOTM(overHistory)?.name || "N/A"}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div style={{ margin: "25px 0", padding: "15px", background: "rgba(255, 215, 0, 0.08)", borderRadius: "12px", border: "1px solid rgba(255, 215, 0, 0.2)" }}>
+                    <span style={{ fontSize: "12px", color: "#ffd700", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.1em" }}>REQUIRED TO WIN</span>
+                    <div style={{ fontSize: "32px", fontWeight: "bold", margin: "5px 0", color: "#fff" }}>
+                      {targetScore} Runs
+                    </div>
+                    <p style={{ margin: 0, color: "#aaa", fontSize: "13px" }}>
+                      Required Run Rate: {(targetScore / oversLimit).toFixed(2)}
+                    </p>
+                  </div>
+
+                  <button className="play-btn proceed-btn" style={{ width: "100%", padding: "15px", fontSize: "18px", background: "#ffd700", color: "#111", fontWeight: "bold", border: "none", borderRadius: "10px", cursor: "pointer" }} onClick={startSecondInnings}>
+                    Start Run Chase 🏏
+                  </button>
+                </div>
+              </div>
             )}
 
         </div>

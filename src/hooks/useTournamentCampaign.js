@@ -206,7 +206,7 @@ export function useTournamentCampaign({
     }
   }, [tournamentHistory, user, isGuest]);
 
-  const updateTournamentProgress = useCallback((isPlayerWin) => {
+  const updateTournamentProgress = useCallback((isPlayerWin, customMargin) => {
     if (!tournamentState) return;
 
     const state = { ...tournamentState };
@@ -221,7 +221,7 @@ export function useTournamentCampaign({
       match.played = true;
       match.winner = isPlayerWin ? match.home : match.away;
       match.loser = isPlayerWin ? match.away : match.home;
-      match.margin = isPlayerWin ? playerDeck.length : aiDeck.length;
+      match.margin = customMargin !== undefined ? customMargin : (isPlayerWin ? playerDeck.length : aiDeck.length);
 
       const pTable = { ...pointsTable };
       pTable[match.home].played += 1;
@@ -325,11 +325,11 @@ export function useTournamentCampaign({
     }
 
     // Fire achievement checks
-    const margin = isPlayerWin ? playerDeck.length : aiDeck.length;
+    const margin = customMargin !== undefined ? customMargin : (isPlayerWin ? playerDeck.length : aiDeck.length);
     checkAndUnlock({
       type: "match_end",
       isWin: isPlayerWin,
-      gameMode: "tournament",
+      gameMode: state.campaignType === "cricket" ? "team" : "tournament",
       margin,
       timeLeft: 0,
       tournamentState: state,

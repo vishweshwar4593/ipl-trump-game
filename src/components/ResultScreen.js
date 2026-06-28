@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { calculatePOTM, getPOTMReason } from "../utils/cricketEngine.js";
 
 const STAT_LABELS = {
   runs: "Runs",
@@ -18,7 +19,108 @@ const STAT_LABELS = {
 const BATTING_STATS = new Set(["runs", "matches", "hs", "battingAvg", "battingSR", "hundreds", "fifties"]);
 const BOWLING_STATS = new Set(["wickets", "economy", "bowlingAvg", "bowlingSR"]);
 
-function ResultScreen({ title, buttonText = "Back to Home", onBack, matchStats }) {
+const generateSportscasterRecap = (statHistory, isWin, isDraw) => {
+  if (!statHistory || statHistory.length === 0) return "";
+  
+  const pWinsEarly = statHistory.slice(0, 2).filter(r => r.result === "player").length;
+  const pWinsLate = statHistory.slice(-2).filter(r => r.result === "player").length;
+  const aiWinsMid = statHistory.slice(2, 5).filter(r => r.result === "ai").length;
+
+  let recap = "";
+  if (isWin) {
+    recap += `🏆 A brilliant victory! `;
+    if (pWinsEarly === 2) {
+      recap += `You got off to a flying start, dominating the early rounds. `;
+    }
+    if (aiWinsMid >= 2) {
+      recap += `Although the opponent fought back strongly in the middle stages, `;
+    } else {
+      recap += `You maintained steady control throughout the match, `;
+    }
+    if (pWinsLate >= 1) {
+      recap += `and you finished strong in the death overs to seal the win.`;
+    } else {
+      recap += `holding on to your lead at the finish line.`;
+    }
+  } else if (isDraw) {
+    recap += `🤝 It's a tie! A nail-biting encounter ends in a draw. `;
+    recap += `Both sides matched each other round-for-round in a true battle of strategies.`;
+  } else {
+    recap += `😈 The opponent claimed the victory this time. `;
+    if (pWinsEarly === 2) {
+      recap += `You started strong in the opening rounds, but `;
+    }
+    if (aiWinsMid >= 2) {
+      recap += `the opponent mounted a massive comeback in the middle overs, `;
+    } else {
+      recap += `the opponent slowly clawed their way back, `;
+    }
+    recap += `leaving your deck trailing at the end.`;
+  }
+  return recap;
+};
+
+const getMatchMVPs = (statHistory) => {
+  const playerCardStats = {};
+  const aiCardStats = {};
+  
+  statHistory.forEach(r => {
+    if (r.playerCard) {
+      if (!playerCardStats[r.playerCard]) playerCardStats[r.playerCard] = { wins: 0, maxVal: 0, stat: "" };
+      if (r.result === "player") playerCardStats[r.playerCard].wins += 1;
+      if (r.playerValue > playerCardStats[r.playerCard].maxVal) {
+        playerCardStats[r.playerCard].maxVal = r.playerValue;
+        playerCardStats[r.playerCard].stat = r.stat;
+      }
+    }
+    if (r.aiCard) {
+      if (!aiCardStats[r.aiCard]) aiCardStats[r.aiCard] = { wins: 0, maxVal: 0, stat: "" };
+      if (r.result === "ai") aiCardStats[r.aiCard].wins += 1;
+      if (r.aiValue > aiCardStats[r.aiCard].maxVal) {
+        aiCardStats[r.aiCard].maxVal = r.aiValue;
+        aiCardStats[r.aiCard].stat = r.stat;
+      }
+    }
+  });
+
+  let bestPlayerCard = null;
+  let bestPlayerWins = -1;
+  let bestPlayerVal = -1;
+  for (const name in playerCardStats) {
+    const { wins, maxVal } = playerCardStats[name];
+    if (wins > bestPlayerWins || (wins === bestPlayerWins && maxVal > bestPlayerVal)) {
+      bestPlayerWins = wins;
+      bestPlayerVal = maxVal;
+      bestPlayerCard = { name, wins, maxVal, stat: playerCardStats[name].stat };
+    }
+  }
+
+  let bestAiCard = null;
+  let bestAiWins = -1;
+  let bestAiVal = -1;
+  for (const name in aiCardStats) {
+    const { wins, maxVal } = aiCardStats[name];
+    if (wins > bestAiWins || (wins === bestAiWins && maxVal > bestAiVal)) {
+      bestAiWins = wins;
+      bestAiVal = maxVal;
+      bestAiCard = { name, wins, maxVal, stat: aiCardStats[name].stat };
+    }
+  }
+
+  return { playerMvp: bestPlayerCard, aiMvp: bestAiCard };
+};
+
+function ResultScreen({
+  title,
+  buttonText = "Back to Home",
+  onBack,
+  matchStats,
+  gameMode,
+  cricketScore,
+  playerTeam,
+  aiTeam,
+  overHistory
+}) {
   const [showSummary, setShowSummary] = useState(false);
 
   const isWin  = title.toLowerCase().includes("player wins") ||
@@ -30,20 +132,6 @@ function ResultScreen({ title, buttonText = "Back to Home", onBack, matchStats }
 
   const icon    = isWin ? "🏆" : isDraw ? "🤝" : "😈";
   const variant = isWin ? "result-win" : isDraw ? "result-draw" : "result-loss";
-
-  const getComparisonSign = (stat, pVal, aVal, winner) => {
-    if (pVal === aVal) return "=";
-    const isLowerBetter = ["economy", "bowlingAvg", "bowlingSR"].includes(stat);
-    if (winner === "player") {
-      return isLowerBetter ? "<" : ">";
-    } else if (winner === "ai") {
-      return isLowerBetter ? ">" : "<";
-    } else {
-      if (pVal > aVal) return ">";
-      if (pVal < aVal) return "<";
-      return "=";
-    }
-  };
 
   /* simple particle burst on win */
   const canvasRef = useRef(null);
@@ -88,8 +176,182 @@ function ResultScreen({ title, buttonText = "Back to Home", onBack, matchStats }
 
   // Compute stat breakdown from statHistory
   let statsPanel = null;
+
+  if (gameMode === "team" && overHistory && overHistory.length > 0) {
+    const potm = calculatePOTM(overHistory);
+    const potmReason = getPOTMReason(potm);
+    const cricketWinner = title.toLowerCase().includes("you win") ? "player" : (title.toLowerCase().includes("ai wins") ? "ai" : "tie");
+    const computedOversLimit = Math.max(...overHistory.map(o => o.overNumber));
+
+    let marginText = "";
+    if (cricketWinner === "tie") {
+      marginText = "The match ended in a thrilling Tie! 🤝";
+    } else {
+      const finalScorePlayer = cricketScore?.player?.runs || 0;
+      const finalScoreAi = cricketScore?.ai?.runs || 0;
+      const playerWickets = cricketScore?.player?.wickets || 0;
+      const aiWickets = cricketScore?.ai?.wickets || 0;
+      
+      const chasedTeam = overHistory.find(o => o.innings === 2)?.winner || null;
+      const runsDiff = Math.abs(finalScorePlayer - finalScoreAi);
+      
+      if (cricketWinner === "player") {
+        if (chasedTeam === "player") {
+          const limit = computedOversLimit === 5 ? 5 : computedOversLimit === 10 ? 7 : 10;
+          marginText = `🏆 ${playerTeam} won by ${limit - playerWickets} Wickets!`;
+        } else {
+          marginText = `🏆 ${playerTeam} won by ${runsDiff} Runs!`;
+        }
+      } else {
+        if (chasedTeam === "ai") {
+          const limit = computedOversLimit === 5 ? 5 : computedOversLimit === 10 ? 7 : 10;
+          marginText = `🏆 ${aiTeam} won by ${limit - aiWickets} Wickets!`;
+        } else {
+          marginText = `🏆 ${aiTeam} won by ${runsDiff} Runs!`;
+        }
+      }
+    }
+
+    statsPanel = (
+      <div className="cricket-results-panel" style={{ width: "100%", marginTop: "15px", color: "#fff", display: "flex", flexDirection: "column", gap: "20px" }}>
+        
+        {/* Margin Banner */}
+        <div style={{ background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.3)", padding: "12px", borderRadius: "10px", fontWeight: "bold", color: "#ffd700", fontSize: "15px", textAlign: "center" }}>
+          {marginText}
+        </div>
+
+        {/* Player of the Match */}
+        {potm && (
+          <div className="potm-card glass-card" style={{ background: "linear-gradient(135deg, rgba(255,215,0,0.15), rgba(0,0,0,0.6))", border: "1px solid #ffd700", padding: "15px", borderRadius: "14px", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", boxShadow: "0 4px 15px rgba(0,0,0,0.4)" }}>
+            <span style={{ fontSize: "10px", color: "#ffd700", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.15em" }}>🌟 Player of the Match</span>
+            <h2 style={{ margin: 0, color: "#fff", fontSize: "20px" }}>{potm.name}</h2>
+            <p style={{ margin: 0, fontSize: "13px", color: "#00ff88", fontWeight: "bold" }}>
+              {potm.runs} Runs Scored &bull; {potm.wickets} Wickets Taken
+            </p>
+            <p style={{ margin: 0, fontSize: "12px", color: "#aaa", fontStyle: "italic", textAlign: "center" }}>
+              "{potmReason}"
+            </p>
+          </div>
+        )}
+
+        {/* Innings Scorecard Collapse */}
+        <div className="stats-summary-wrapper" style={{ width: "100%" }}>
+          <button 
+            className={`summary-toggle-btn ${showSummary ? "active" : ""}`}
+            onClick={() => setShowSummary(!showSummary)}
+            type="button"
+            style={{ width: "100%", padding: "12px", display: "flex", justifyContent: "space-between", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", color: "#fff", cursor: "pointer", fontSize: "14px" }}
+          >
+            <span>{showSummary ? "Hide Match Scorecard" : "Show Match Scorecard"}</span>
+            <span className="arrow-icon">{showSummary ? "▲" : "▼"}</span>
+          </button>
+
+          <div className={`summary-collapse-container ${showSummary ? "expanded" : ""}`} style={{ display: showSummary ? "block" : "none", marginTop: "15px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              
+              {/* Innings 1 Scorecard */}
+              <div className="innings-card" style={{ background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "15px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                <h3 style={{ margin: "0 0 10px 0", color: "#ffd700", textAlign: "left", fontSize: "14px" }}>
+                  1st Innings: {overHistory.find(o => o.innings === 1)?.winner === "player" ? playerTeam : aiTeam} Scorecard
+                </h3>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#aaa" }}>
+                        <th style={{ padding: "6px" }}>Over</th>
+                        <th style={{ padding: "6px" }}>Batter</th>
+                        <th style={{ padding: "6px" }}>Bowler</th>
+                        <th style={{ padding: "6px" }}>Stat</th>
+                        <th style={{ padding: "6px", textAlign: "right" }}>Runs</th>
+                        <th style={{ padding: "6px", textAlign: "right" }}>Wicket</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overHistory.filter(o => o.innings === 1).map((over, index) => (
+                        <tr key={index} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                          <td style={{ padding: "6px", color: "#00cfff" }}>Over {over.overNumber}</td>
+                          <td style={{ padding: "6px", fontWeight: "bold" }}>{over.battingPlayer}</td>
+                          <td style={{ padding: "6px", color: "#ccc" }}>{over.bowlingPlayer}</td>
+                          <td style={{ padding: "6px", color: "#aaa" }}>{STAT_LABELS[over.selectedStat] || over.selectedStat}</td>
+                          <td style={{ padding: "6px", textAlign: "right", color: over.runs > 0 ? "#00ff88" : "#fff", fontWeight: over.runs > 0 ? "bold" : "normal" }}>{over.runs}</td>
+                          <td style={{ padding: "6px", textAlign: "right", color: over.wicket > 0 ? "#ff4b2b" : "#aaa", fontWeight: over.wicket > 0 ? "bold" : "normal" }}>{over.wicket > 0 ? "W" : "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Innings 2 Scorecard */}
+              {overHistory.some(o => o.innings === 2) && (
+                <div className="innings-card" style={{ background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "15px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                  <h3 style={{ margin: "0 0 10px 0", color: "#ffd700", textAlign: "left", fontSize: "14px" }}>
+                    2nd Innings: {overHistory.find(o => o.innings === 2)?.winner === "player" ? playerTeam : aiTeam} Scorecard
+                  </h3>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#aaa" }}>
+                          <th style={{ padding: "6px" }}>Over</th>
+                          <th style={{ padding: "6px" }}>Batter</th>
+                          <th style={{ padding: "6px" }}>Bowler</th>
+                          <th style={{ padding: "6px" }}>Stat</th>
+                          <th style={{ padding: "6px", textAlign: "right" }}>Runs</th>
+                          <th style={{ padding: "6px", textAlign: "right" }}>Wicket</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {overHistory.filter(o => o.innings === 2).map((over, index) => (
+                          <tr key={index} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                            <td style={{ padding: "6px", color: "#00cfff" }}>Over {over.overNumber}</td>
+                            <td style={{ padding: "6px", fontWeight: "bold" }}>{over.battingPlayer}</td>
+                            <td style={{ padding: "6px", color: "#ccc" }}>{over.bowlingPlayer}</td>
+                            <td style={{ padding: "6px", color: "#aaa" }}>{STAT_LABELS[over.selectedStat] || over.selectedStat}</td>
+                            <td style={{ padding: "6px", textAlign: "right", color: over.runs > 0 ? "#00ff88" : "#fff", fontWeight: over.runs > 0 ? "bold" : "normal" }}>{over.runs}</td>
+                            <td style={{ padding: "6px", textAlign: "right", color: over.wicket > 0 ? "#ff4b2b" : "#aaa", fontWeight: over.wicket > 0 ? "bold" : "normal" }}>{over.wicket > 0 ? "W" : "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
   if (matchStats) {
     const { cardsWon, cardsLost, statHistory = [], tournamentContext } = matchStats;
+
+    const recapText = generateSportscasterRecap(statHistory, isWin, isDraw);
+    const mvps = getMatchMVPs(statHistory);
+
+    let totalRunsPlayer = 0;
+    let totalRunsAi = 0;
+    let totalWicketsPlayer = 0;
+    let totalWicketsAi = 0;
+    let hasBatting = false;
+    let hasBowling = false;
+
+    statHistory.forEach(r => {
+      if (BATTING_STATS.has(r.stat)) {
+        totalRunsPlayer += (r.playerValue || 0);
+        totalRunsAi += (r.aiValue || 0);
+        hasBatting = true;
+      }
+      if (BOWLING_STATS.has(r.stat)) {
+        if (r.stat === "wickets") {
+          totalWicketsPlayer += (r.playerValue || 0);
+          totalWicketsAi += (r.aiValue || 0);
+          hasBowling = true;
+        }
+      }
+    });
 
     const statCounts = {};
     let battingCount = 0;
@@ -191,39 +453,56 @@ function ResultScreen({ title, buttonText = "Back to Home", onBack, matchStats }
             </button>
 
             <div className={`summary-collapse-container ${showSummary ? "expanded" : ""}`}>
-              <div className="summary-rounds-list">
-                {statHistory.map((round, idx) => {
-                  const { stat, result, playerCard, aiCard, playerValue, aiValue } = round;
-                  const sign = getComparisonSign(stat, playerValue, aiValue, result);
-                  const roundClass = result === "player" ? "round-win" : result === "ai" ? "round-loss" : "round-draw";
-                  const statusText = result === "player" ? "Won" : result === "ai" ? "Lost" : "Draw";
-                  const statLabel = STAT_LABELS[stat] || stat;
+              <div className="summary-highlevel-container">
+                {/* Commentary Recap Box */}
+                <div className="recap-commentary-box">
+                  <p>{recapText}</p>
+                </div>
 
-                  return (
-                    <div key={idx} className={`summary-round-row ${roundClass}`}>
-                      <div className="round-num">Round {idx + 1}</div>
-                      
-                      <div className="round-matchup">
-                        <div className="summary-card player-side">
-                          <span className="summary-card-name">{playerCard || "Unknown"}</span>
-                          <span className="summary-card-val">{playerValue !== undefined ? playerValue : "-"}</span>
-                        </div>
-                        
-                        <div className="summary-stat-compare">
-                          <span className="summary-compare-sign">{sign}</span>
-                          <span className="summary-stat-label">{statLabel}</span>
-                        </div>
-                        
-                        <div className="summary-card ai-side">
-                          <span className="summary-card-val">{aiValue !== undefined ? aiValue : "-"}</span>
-                          <span className="summary-card-name">{aiCard || "Unknown"}</span>
-                        </div>
+                {/* Match MVPs Row */}
+                <div className="mvp-cards-row">
+                  {mvps.playerMvp && (
+                    <div className="mvp-card player-mvp">
+                      <div className="mvp-badge">🎖️ YOUR MVP</div>
+                      <div className="mvp-card-name">{mvps.playerMvp.name}</div>
+                      <div className="mvp-stat-detail">
+                        Won <strong>{mvps.playerMvp.wins}</strong> rounds | Max: <strong>{mvps.playerMvp.maxVal}</strong> ({STAT_LABELS[mvps.playerMvp.stat]})
                       </div>
-
-                      <div className="round-status">{statusText}</div>
                     </div>
-                  );
-                })}
+                  )}
+                  {mvps.aiMvp && (
+                    <div className="mvp-card opponent-mvp">
+                      <div className="mvp-badge">🎖️ OPPONENT MVP</div>
+                      <div className="mvp-card-name">{mvps.aiMvp.name}</div>
+                      <div className="mvp-stat-detail">
+                        Won <strong>{mvps.aiMvp.wins}</strong> rounds | Max: <strong>{mvps.aiMvp.maxVal}</strong> ({STAT_LABELS[mvps.aiMvp.stat]})
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Compare Stats Grid */}
+                {(hasBatting || hasBowling) && (
+                  <div className="comparison-stats-grid">
+                    <div className="comparison-grid-title">📊 Team Comparisons</div>
+                    {hasBatting && (
+                      <div className="comparison-stat-row">
+                        <span className="comp-label">Runs Scored</span>
+                        <span className="comp-values">
+                          {totalRunsPlayer} {totalRunsPlayer > totalRunsAi ? ">" : totalRunsPlayer < totalRunsAi ? "<" : "="} {totalRunsAi}
+                        </span>
+                      </div>
+                    )}
+                    {hasBowling && (
+                      <div className="comparison-stat-row">
+                        <span className="comp-label">Wickets Taken</span>
+                        <span className="comp-values">
+                          {totalWicketsPlayer} {totalWicketsPlayer > totalWicketsAi ? ">" : totalWicketsPlayer < totalWicketsAi ? "<" : "="} {totalWicketsAi}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

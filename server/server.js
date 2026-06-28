@@ -199,6 +199,58 @@ function emitGameStateUpdate(roomId) {
     }
 }
 
+function handleOnlineTossTimeout(roomId, winnerRole) {
+    const game = games[roomId];
+    if (!game || game.tossDecision) return;
+
+    game.tossDecision = "play";
+    if (game.tossTimer) clearTimeout(game.tossTimer);
+    game.tossTimer = null;
+
+    const creatorSock = rooms[roomId][0];
+    const joinerSock = rooms[roomId][1];
+
+    const startingTurnCreator = winnerRole === "creator" ? "player" : "ai";
+    const startingTurnJoiner = winnerRole === "joiner" ? "player" : "ai";
+
+    game.turn = winnerRole;
+
+    io.to(creatorSock).emit("tossDecisionBroadcast", {
+        decision: "play",
+        startingTurn: startingTurnCreator
+    });
+    io.to(joinerSock).emit("tossDecisionBroadcast", {
+        decision: "play",
+        startingTurn: startingTurnJoiner
+    });
+}
+
+function handleOnlineTossCallTimeout(roomId) {
+    const game = games[roomId];
+    if (!game || game.tossCallChoice) return;
+
+    const caller = game.tossCaller;
+    const choice = Math.random() > 0.5 ? "heads" : "tails";
+    const result = Math.random() > 0.5 ? "heads" : "tails";
+    const winner = choice === result ? caller : (caller === "creator" ? "joiner" : "creator");
+
+    game.tossCallChoice = choice;
+    game.tossResultChoice = result;
+    game.tossWinner = winner;
+
+    if (game.tossTimer) clearTimeout(game.tossTimer);
+    game.tossTimer = null;
+
+    io.to(roomId).emit("tossResult", {
+        result,
+        winner
+    });
+
+    game.tossTimer = setTimeout(() => {
+        handleOnlineTossTimeout(roomId, winner);
+    }, 12000);
+}
+
 function dealDecks(roomId) {
     const gameMode = roomModes[roomId];
     const { creatorTeam, joinerTeam } = roomTeams[roomId] || {};
@@ -227,7 +279,7 @@ function dealDecks(roomId) {
         joinerReserve = deck2.slice(deckLimit);
     }
 
-    const turn = Math.random() > 0.5 ? "creator" : "joiner";
+    const tossCaller = Math.random() > 0.5 ? "creator" : "joiner";
 
     let weather = null;
     let moisture = null;
@@ -251,7 +303,7 @@ function dealDecks(roomId) {
         joinerReserve,
         creatorHP: 500,
         joinerHP: 500,
-        turn,
+        turn: "toss",
         round: 1,
         consecutiveTurns: 1,
         drawPile: [],
@@ -269,6 +321,11 @@ function dealDecks(roomId) {
         disconnectTimeout: null,
         creatorUid,
         joinerUid,
+        tossCaller,
+        tossWinner: null,
+        tossCallChoice: null,
+        tossResultChoice: null,
+        tossTimer: null
     };
 
     io.to(rooms[roomId][0]).emit("startGame", {
@@ -283,7 +340,8 @@ function dealDecks(roomId) {
         initialWeather: weather,
         initialMoisture: moisture,
         initialPitchCondition: pitchCondition,
-        startingTurn: turn === "creator" ? "player" : "ai",
+        startingTurn: "toss",
+        tossCaller,
     });
 
     io.to(rooms[roomId][1]).emit("startGame", {
@@ -298,8 +356,13 @@ function dealDecks(roomId) {
         initialWeather: weather,
         initialMoisture: moisture,
         initialPitchCondition: pitchCondition,
-        startingTurn: turn === "joiner" ? "player" : "ai",
+        startingTurn: "toss",
+        tossCaller,
     });
+
+    games[roomId].tossTimer = setTimeout(() => {
+        handleOnlineTossCallTimeout(roomId);
+    }, 11000);
 
     console.log(`Game started in room ${roomId} | mode: ${gameMode} | ${creatorTeam} vs ${joinerTeam}`);
 }
@@ -426,6 +489,86 @@ io.on("connection", (socket) => {
         roomTeams[roomId].joinerTeam = joinerTeam;
         console.log(`Room ${roomId}: joiner picked team "${joinerTeam}"`);
         dealDecks(roomId);
+    });
+
+    socket.on("tossCall", ({ choice }) => {
+        let roomId = null;
+        for (const rid in rooms) {
+            if (rooms[rid].includes(socket.id)) {
+                roomId = rid;
+                break;
+            }
+        }
+        if (!roomId) return;
+        const game = games[roomId];
+        if (!game || game.turn !== "toss" || game.tossCallChoice) return;
+
+        const socketIndex = rooms[roomId].indexOf(socket.id);
+        const role = socketIndex === 0 ? "creator" : "joiner";
+        if (role !== game.tossCaller) return;
+
+        if (game.tossTimer) {
+            clearTimeout(game.tossTimer);
+            game.tossTimer = null;
+        }
+
+        const result = Math.random() > 0.5 ? "heads" : "tails";
+        const winner = choice === result ? role : (role === "creator" ? "joiner" : "creator");
+
+        game.tossCallChoice = choice;
+        game.tossResultChoice = result;
+        game.tossWinner = winner;
+
+        io.to(roomId).emit("tossResult", {
+            result,
+            winner
+        });
+
+        game.tossTimer = setTimeout(() => {
+            handleOnlineTossTimeout(roomId, winner);
+        }, 12000);
+    });
+
+    socket.on("tossDecision", ({ decision }) => {
+        let roomId = null;
+        for (const rid in rooms) {
+            if (rooms[rid].includes(socket.id)) {
+                roomId = rid;
+                break;
+            }
+        }
+        if (!roomId) return;
+        const game = games[roomId];
+        if (!game || game.turn !== "toss" || !game.tossWinner || game.tossDecision) return;
+
+        const socketIndex = rooms[roomId].indexOf(socket.id);
+        const role = socketIndex === 0 ? "creator" : "joiner";
+        if (role !== game.tossWinner) return;
+
+        if (game.tossTimer) {
+            clearTimeout(game.tossTimer);
+            game.tossTimer = null;
+        }
+
+        game.tossDecision = decision;
+
+        const startingRole = decision === "play" ? role : (role === "creator" ? "joiner" : "creator");
+        game.turn = startingRole;
+
+        const creatorSock = rooms[roomId][0];
+        const joinerSock = rooms[roomId][1];
+
+        const startingTurnCreator = startingRole === "creator" ? "player" : "ai";
+        const startingTurnJoiner = startingRole === "joiner" ? "player" : "ai";
+
+        io.to(creatorSock).emit("tossDecisionBroadcast", {
+            decision,
+            startingTurn: startingTurnCreator
+        });
+        io.to(joinerSock).emit("tossDecisionBroadcast", {
+            decision,
+            startingTurn: startingTurnJoiner
+        });
     });
 
     socket.on("playStat", ({ roomId, stat, roundNumber }) => {

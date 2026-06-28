@@ -10,6 +10,12 @@ import {
   bowlingStats, 
   STAT_WEIGHTS 
 } from "../utils/gameRules";
+import { 
+  CRICKET_CONFIG, 
+  getNormalizedStat, 
+  calculateOverRuns 
+} from "../utils/cricketEngine";
+
 
 const getClutchReplacementsScore = (card, gameMode, round, pitchCondition, weather, moisture) => {
   if (!card) return 0;
@@ -102,8 +108,9 @@ export function useGameEngine({
   user,
   isGuest,
   showConfirm = false,
-  tournamentState
+  tournamentStateRef
 }) {
+  const activeTournamentState = tournamentStateRef?.current;
   const [selectedStat, setSelectedStat] = useState(null);
   const [winner, setWinner] = useState(null);
   const [round, setRound] = useState(1);
@@ -140,6 +147,22 @@ export function useGameEngine({
   const [statHistory, setStatHistory] = useState([]);
   // Feature badges: track if player was ever behind (Survivor badge)
   const [wasEverBehind, setWasEverBehind] = useState(false);
+
+  // Cricket States
+  const [oversLimit, setOversLimit] = useState(5);
+  const [currentInnings, setCurrentInnings] = useState(1);
+  const [battingTeam, setBattingTeam] = useState(null);
+  const [targetScore, setTargetScore] = useState(null);
+  const [matchIntensity, setMatchIntensity] = useState(1.0);
+  const [matchMomentum, setMatchMomentum] = useState(1.0);
+  const [overSummary, setOverSummary] = useState("");
+  const [overHistory, setOverHistory] = useState([]);
+  const [cricketScore, setCricketScore] = useState({
+    player: { runs: 0, wickets: 0, oversCompleted: 0 },
+    ai: { runs: 0, wickets: 0, oversCompleted: 0 }
+  });
+  const [isInningsBreak, setIsInningsBreak] = useState(false);
+  const [cricketWinner, setCricketWinner] = useState(null);
 
   const player = playerDeck[0];
   const ai = aiDeck[0];
@@ -253,12 +276,23 @@ export function useGameEngine({
       setOverAnnouncement(null);
       setSuperOverActive(false);
       setSuperOverBanner(false);
+      
+      // Reset Cricket states
+      setCurrentInnings(1);
+      setBattingTeam(null);
+      setTargetScore(null);
+      setMatchIntensity(1.0);
+      setMatchMomentum(1.0);
+      setOverSummary("");
+      setOverHistory([]);
+      setCricketWinner(null);
+      setIsInningsBreak(false);
+      setCricketScore({
+        player: { runs: 0, wickets: 0, oversCompleted: 0 },
+        ai: { runs: 0, wickets: 0, oversCompleted: 0 }
+      });
       return;
     }
-    // For offline team mode, wait until both teams are chosen locally.
-    // For online team mode, teams arrive with startGame so skip this guard.
-    if (gameMode === "team" && playStyle !== "online" && (!playerTeam || !aiTeam)) return;
-
     if (resumedGameState) {
       setPlayerDeck(resumedGameState.playerDeck);
       setAiDeck(resumedGameState.aiDeck);
@@ -290,17 +324,25 @@ export function useGameEngine({
       // "startGame" socket event fires. Toss is deferred to a separate effect
       // below so it only runs AFTER decks exist (prevents handleStatClick from
       // firing against undefined player/ai on the very first turn).
-    } else if (gameMode === "team") {
-      const playerPlayers = players.filter(p => p.team === playerTeam);
-      const aiPlayers = players.filter(p => p.team === aiTeam);
-      setPlayerDeck(shuffle(playerPlayers));
-      setAiDeck(shuffle(aiPlayers));
-      setPlayerFranchisePool([]);
-      setAiFranchisePool([]);
+    } else if (gameMode === "team" && playStyle !== "online") {
+      // Cricket Campaign: deck + toss is handled by the dedicated initCricketMatch
+      // useEffect below, which fires after playerTeam/aiTeam state has propagated.
+      // We only need to reset cricket state here — NOT set up decks or turn.
+      setPlayerDeck([]);
+      setAiDeck([]);
+      setCurrentInnings(1);
+      setBattingTeam(null);
+      setTargetScore(null);
+      setCricketScore({ player: { runs: 0, wickets: 0, oversCompleted: 0 }, ai: { runs: 0, wickets: 0, oversCompleted: 0 } });
+      setCricketWinner(null);
+      setIsInningsBreak(false);
+      setGameOver(false);
+      setTurn(null);
+      return;
     } else if (gameMode === "tournament") {
       let deckLimit = 7;
-      if (tournamentState && tournamentState.stage === "playoffs" && tournamentState.playoffs) {
-        const play = tournamentState.stage === "playoffs" ? tournamentState.playoffs : null;
+      if (activeTournamentState && activeTournamentState.stage === "playoffs" && activeTournamentState.playoffs) {
+        const play = activeTournamentState.stage === "playoffs" ? activeTournamentState.playoffs : null;
         if (play) {
           const isFinalActive = play.final && play.final.home && !play.final.played && 
             (play.final.home === playerTeam || play.final.away === playerTeam || 
@@ -332,10 +374,9 @@ export function useGameEngine({
       setAiFranchisePool([]);
     }
 
-    // Offline-only toss — online toss is handled after decks arrive (see effect below).
+    // Offline-only toss — we show the Toss screen first!
     if (playStyle !== "online") {
-      const tossWinner = Math.random() > 0.5 ? "player" : "ai";
-      setTurn(tossWinner);
+      setTurn("toss");
     }
     setRound(1);
     setSelectedStat(null);
@@ -354,9 +395,20 @@ export function useGameEngine({
     setSuperOverActive(false);
     setSuperOverBanner(false);
   // onlineRole intentionally removed — no longer used in this effect.
-  }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle, tournamentState]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle, tournamentStateRef, oversLimit]);
 
   // (Online starting turn is now initialized and set by OnlineMode on "startGame")
+
+  // Cricket Campaign: when teams are set and mode is "team" (offline), init the cricket match.
+  // This runs AFTER playerTeam/aiTeam state has propagated so initCricketMatch reads fresh values.
+  useEffect(() => {
+    if (gameMode !== "team" || playStyle === "online") return;
+    if (!playerTeam || !aiTeam) return;
+    const overs = (tournamentStateRef?.current?.oversLimit) ? tournamentStateRef.current.oversLimit : 5;
+    initCricketMatch(overs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameMode, playerTeam, aiTeam, playStyle]);
 
   // Note: Auto-save logic has been removed to ensure standard matches are lost permanently when closing, refreshing, or going home. Tournament campaign saves remain preserved in their separate flow.
 
@@ -375,7 +427,7 @@ export function useGameEngine({
     }
 
     let statsPool;
-    if (gameMode === "team" || gameMode === "tournament") {
+    if (gameMode === "tournament") {
       const stage = getRoundStage(round);
       if (stage === "powerplay") {
         statsPool = ["runs", "hs", "battingAvg", "battingSR", "hundreds", "fifties"];
@@ -433,6 +485,53 @@ export function useGameEngine({
     }
     return bestStat;
   }, [gameMode, round, pitchCondition, weather, moisture]);
+
+  // Cricket Helper Hooks
+  const initCricketMatch = useCallback((formatOvers) => {
+    setOversLimit(formatOvers);
+    const intensity = 0.8 + (Math.random() * 0.4);
+    setMatchIntensity(intensity);
+    setMatchMomentum(CRICKET_CONFIG.MOMENTUM_FACTORS.STARTING);
+    setOverHistory([]);
+    setOverSummary("");
+    setCricketWinner(null);
+    setIsInningsBreak(false);
+    setCurrentInnings(1);
+    setRound(1);
+    setTargetScore(null);
+    setCricketScore({
+      player: { runs: 0, wickets: 0, oversCompleted: 0 },
+      ai: { runs: 0, wickets: 0, oversCompleted: 0 }
+    });
+
+    const playerPlayers = players.filter(p => p.team === playerTeam);
+    const aiPlayers = players.filter(p => p.team === aiTeam);
+    const shuffledPlayer = shuffle(playerPlayers);
+    const shuffledAi = shuffle(aiPlayers);
+    
+    setPlayerDeck(shuffledPlayer.slice(0, formatOvers));
+    setAiDeck(shuffledAi.slice(0, formatOvers));
+    setPlayerFranchisePool(shuffledPlayer.slice(formatOvers));
+    setAiFranchisePool(shuffledAi.slice(formatOvers));
+    
+    setTurn("toss");
+    setGameOver(false);
+  }, [playerTeam, aiTeam, players]);
+
+  const startSecondInnings = useCallback(() => {
+    const nextBat = battingTeam === "player" ? "ai" : "player";
+    setBattingTeam(nextBat);
+    setCurrentInnings(2);
+    setRound(1);
+    setTurn(nextBat);
+    setIsInningsBreak(false);
+    setMatchMomentum(CRICKET_CONFIG.MOMENTUM_FACTORS.STARTING);
+
+    const playerPlayers = players.filter(p => p.team === playerTeam);
+    const aiPlayers = players.filter(p => p.team === aiTeam);
+    setPlayerDeck(shuffle(playerPlayers).slice(0, oversLimit));
+    setAiDeck(shuffle(aiPlayers).slice(0, oversLimit));
+  }, [battingTeam, players, playerTeam, aiTeam, oversLimit]);
 
 const handleTurnTimeout = useCallback(() => {
     if (playStyle === "online") return;
@@ -566,6 +665,156 @@ const handleTurnTimeout = useCallback(() => {
       if (playerValue > aiValue) result = "player";
       else if (aiValue > playerValue) result = "ai";
       else result = "draw";
+    }
+
+    if (gameMode === "team" && playStyle !== "online") {
+      const isPlayerBatting = battingTeam === "player";
+      const batCard = isPlayerBatting ? player : ai;
+      const bowlCard = isPlayerBatting ? ai : player;
+
+      const pNorm = getNormalizedStat(player, stat);
+      const aNorm = getNormalizedStat(ai, stat);
+      const batNorm = isPlayerBatting ? pNorm : aNorm;
+      const bowlNorm = isPlayerBatting ? aNorm : pNorm;
+
+      // Also get raw stat values for a better run magnitude calculation
+      const pRaw = getModifiedStat(player, stat, pitchCondition, weather, moisture) ?? 0;
+      const aRaw = getModifiedStat(ai, stat, pitchCondition, weather, moisture) ?? 0;
+      const batRaw = isPlayerBatting ? pRaw : aRaw;
+      const bowlRaw = isPlayerBatting ? aRaw : pRaw;
+
+      let roundResult = "dot";
+      if (batNorm > bowlNorm) roundResult = "batting_win";
+      else if (bowlNorm > batNorm) roundResult = "bowling_win";
+
+      let runs = 0;
+      let wicket = 0;
+      let summaryText = "";
+
+      if (roundResult === "batting_win") {
+        // Use raw stat margin: difference as % of the larger value → gives proper 0-100 range
+        const maxRaw = Math.max(batRaw, bowlRaw, 1);
+        const winPct = ((batRaw - bowlRaw) / maxRaw) * 100;
+        const baseRuns = calculateOverRuns(winPct, matchIntensity, matchMomentum);
+        
+        // Scale runs by the batsman's capability (strike rate) relative to standard T20 baseline (125)
+        const batsmanSR = batCard.battingSR || 120;
+        const srFactor = batsmanSR / 125;
+        runs = Math.min(36, Math.max(0, Math.round(baseRuns * srFactor)));
+        
+        if (baseRuns > 0 && runs === 0) {
+          runs = 1;
+        }
+        
+        if (runs === 0) {
+          summaryText = `🔒 Tight Over! ${batCard.name} vs ${bowlCard.name} – Dot Ball`;
+        } else {
+          summaryText = `🏏 ${batCard.name} defeated ${bowlCard.name} – ${runs} Runs`;
+        }
+      } else if (roundResult === "bowling_win") {
+        wicket = 1;
+        summaryText = `🔴 WICKET! ${bowlCard.name} dismissed ${batCard.name}`;
+      } else {
+        summaryText = `🤝 Dot Ball! Tense battle between ${batCard.name} and ${bowlCard.name}`;
+      }
+
+      setSelectedStat(stat);
+      setShowPlayerCard(true);
+      setShowAiCard(true);
+
+      setTimeout(() => {
+        setWinner(result);
+        if (result === "player") {
+          playWin();
+          setTimeout(() => playHit(), 150);
+        } else if (result === "ai") {
+          playLose();
+          setTimeout(() => playHit(), 150);
+        }
+      }, 300);
+
+      setTimeout(() => setAnimate(true), 500);
+
+      setOverSummary(summaryText);
+
+      // Calculate momentum change
+      let nextMomentum = matchMomentum;
+      if (wicket > 0) {
+        nextMomentum = Math.max(CRICKET_CONFIG.MOMENTUM_FACTORS.MIN, matchMomentum + CRICKET_CONFIG.MOMENTUM_FACTORS.WICKET_DOWN);
+      } else if (runs > 0) {
+        nextMomentum = Math.min(CRICKET_CONFIG.MOMENTUM_FACTORS.MAX, matchMomentum + CRICKET_CONFIG.MOMENTUM_FACTORS.WIN_UP);
+      }
+      setMatchMomentum(nextMomentum);
+
+      const activeBat = battingTeam;
+      const currentBatScore = cricketScore[activeBat].runs + runs;
+      const currentBatWickets = cricketScore[activeBat].wickets + wicket;
+      const currentBatOvers = cricketScore[activeBat].oversCompleted + 1;
+
+      setCricketScore(prev => ({
+        ...prev,
+        [activeBat]: { runs: currentBatScore, wickets: currentBatWickets, oversCompleted: currentBatOvers }
+      }));
+
+      // Record detailed scorecard history
+      setOverHistory(prev => [...prev, {
+        overNumber: currentBatOvers,
+        innings: currentInnings,
+        runs,
+        wicket,
+        selectedStat: stat,
+        winner: roundResult === "batting_win" ? activeBat : (roundResult === "bowling_win" ? (activeBat === "player" ? "ai" : "player") : "draw"),
+        winningPercentage: roundResult === "batting_win" ? ((batNorm - bowlNorm) / batNorm) * 100 : 0,
+        batNormalizedVal: batNorm,
+        bowlNormalizedVal: bowlNorm,
+        battingPlayer: batCard.name,
+        bowlingPlayer: bowlCard.name,
+        summary: summaryText
+      }]);
+
+      const wkLimit = CRICKET_CONFIG.WICKET_LIMITS[oversLimit] || 10;
+
+      setTimeout(() => {
+        setOverSummary("");
+
+        if (currentInnings === 1) {
+          const isAllOut = currentBatWickets >= wkLimit || currentBatOvers >= oversLimit;
+          if (isAllOut) {
+            setTargetScore(currentBatScore + 1);
+            setIsInningsBreak(true);
+          } else {
+            setPlayerDeck(prev => [...prev.slice(1), prev[0]]);
+            setAiDeck(prev => [...prev.slice(1), prev[0]]);
+            setRound(prev => prev + 1);
+          }
+        } else {
+          // Innings 2 Chasing
+          const passedTarget = currentBatScore >= targetScore;
+          const isChaseEnded = currentBatWickets >= wkLimit || currentBatOvers >= oversLimit || passedTarget;
+
+          if (passedTarget) {
+            setCricketWinner(activeBat);
+            setGameOver(true);
+          } else if (isChaseEnded) {
+            if (currentBatScore === targetScore - 1) {
+              setCricketWinner("tie");
+            } else {
+              setCricketWinner(activeBat === "player" ? "ai" : "player");
+            }
+            setGameOver(true);
+          } else {
+            setPlayerDeck(prev => [...prev.slice(1), prev[0]]);
+            setAiDeck(prev => [...prev.slice(1), prev[0]]);
+            setRound(prev => prev + 1);
+          }
+        }
+
+        setSelectedStat(null);
+        setWinner(null);
+        setAnimate(false);
+        setShowAiCard(false);
+      }, 2500);
+      return;
     }
 
     setSelectedStat(stat);
@@ -720,7 +969,7 @@ const handleTurnTimeout = useCallback(() => {
         setConsecutiveTurns(1);
       }
     }, 2000);
-  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode, round, playerDeck, aiDeck, playerFranchisePool, aiFranchisePool, players]);
+  }, [player, ai, selectedStat, isBattleMode, gameOver, gameMode, playStyle, playerTeam, aiTeam, playClick, playHit, playLose, playWin, turn, pitchCondition, weather, moisture, consecutiveTurns, isMultiplayerMode, round, playerDeck, aiDeck, playerFranchisePool, aiFranchisePool, players, battingTeam, cricketScore, currentInnings, matchIntensity, matchMomentum, oversLimit, targetScore]);
   // ✅ FIX 3: drawPile removed from deps — now read via drawPileRef to prevent stale closure
 
   // ✅ FIX 2: Keep a stable ref to the latest handleStatClick so the socket listener
@@ -931,7 +1180,8 @@ const handleTurnTimeout = useCallback(() => {
       isAITurn &&
       !selectedStat &&
       !gameOver &&
-      !showConfirm
+      !showConfirm &&
+      !isInningsBreak
     ) {
       const activeCard = turn === "player" ? player : ai;
       if (!activeCard) return;
@@ -1031,7 +1281,8 @@ const handleTurnTimeout = useCallback(() => {
     aiDeck,
     playerFranchisePool,
     aiFranchisePool,
-    showConfirm
+    showConfirm,
+    isInningsBreak
   ]);
 
   const handleTurnTimeoutRef = useRef(handleTurnTimeout);
@@ -1042,7 +1293,7 @@ const handleTurnTimeout = useCallback(() => {
   // Hook C: Turn timeout countdown timer execution
   useEffect(() => {
     if (playStyle === "online") return; // Disable local timeout timer in online mode
-    const shouldRunTimeout = selectedStat === null && !gameOver && !!turn && !swapModalOpen && !showConfirm;
+    const shouldRunTimeout = selectedStat === null && !gameOver && !!turn && !swapModalOpen && !showConfirm && !isInningsBreak;
 
     if (shouldRunTimeout) {
       const timeout = setTimeout(() => {
@@ -1050,7 +1301,7 @@ const handleTurnTimeout = useCallback(() => {
       }, TURN_TIMEOUT);
       return () => clearTimeout(timeout);
     }
-  }, [selectedStat, gameOver, turn, TURN_TIMEOUT, swapModalOpen, showConfirm, playStyle]);
+  }, [selectedStat, gameOver, turn, TURN_TIMEOUT, swapModalOpen, showConfirm, playStyle, isInningsBreak]);
 
   // Hook D: 5-Second Tactical Swap Timer Countdown
   useEffect(() => {
@@ -1113,6 +1364,20 @@ const handleTurnTimeout = useCallback(() => {
     statHistory,
     wasEverBehind,
     superOverActive,
-    superOverBanner
+    superOverBanner,
+    
+    // Cricket Returns
+    oversLimit, setOversLimit,
+    currentInnings, setCurrentInnings,
+    battingTeam, setBattingTeam,
+    targetScore, setTargetScore,
+    matchIntensity, setMatchIntensity,
+    matchMomentum, setMatchMomentum,
+    overSummary, setOverSummary,
+    overHistory, setOverHistory,
+    cricketScore, setCricketScore,
+    isInningsBreak, setIsInningsBreak,
+    cricketWinner, setCricketWinner,
+    initCricketMatch, startSecondInnings
   };
 }
