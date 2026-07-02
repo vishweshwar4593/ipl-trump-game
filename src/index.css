@@ -3069,8 +3069,9 @@ body {
   box-shadow: none;
 }
 
-/* Automatically hide background game scoreboard & draw pile details when the Tactical Swap screen is open */
+/* Automatically hide background game scoreboard & draw pile details when the Tactical Swap or Innings Break screen is open */
 .game:has(.swap-modal-overlay) .scoreboard,
+.game:has(.innings-break-overlay) .scoreboard,
 .game:has(.swap-modal-overlay) .draw-area p {
   display: none !important;
 }
@@ -4318,4 +4319,107 @@ body {
   color: #fff;
   font-family: monospace;
   font-size: 14.5px;
+}
+
+/* Compress Innings Break Card elements vertically on mobile landscape screens to fit without scrolling */
+@media (max-width: 1100px) and (orientation: landscape) {
+  .innings-break-overlay {
+    align-items: center !important;
+  }
+
+  .innings-break-card {
+    padding: 10px 16px !important;
+    max-width: 360px !important;
+    border-radius: 12px !important;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5) !important;
+  }
+
+  /* Live Match Centre label */
+  .innings-break-card > div:nth-of-type(1) {
+    margin-bottom: 5px !important;
+  }
+
+  /* End of Innings 1 title */
+  .innings-break-card h2 {
+    font-size: 14px !important;
+    margin: 0 0 6px 0 !important;
+  }
+
+  /* Scorecard container */
+  .innings-break-card > div:nth-of-type(2) {
+    margin: 6px 0 !important;
+    padding: 6px 10px !important;
+    border-radius: 8px !important;
+  }
+
+  /* Scorecard team name */
+  .innings-break-card > div:nth-of-type(2) h1 {
+    font-size: 16px !important;
+    margin: 0 0 4px 0 !important;
+  }
+
+  /* Score text */
+  .innings-break-card > div:nth-of-type(2) > div {
+    font-size: 24px !important;
+  }
+
+  /* Scorecard description text */
+  .innings-break-card > div:nth-of-type(2) p {
+    font-size: 11px !important;
+    margin: 4px 0 0 0 !important;
+  }
+
+  /* Stats flex row */
+  .innings-break-card > div:nth-of-type(3) {
+    margin: 6px 0 !important;
+    gap: 8px !important;
+  }
+
+  /* Stats item pills */
+  .innings-break-card > div:nth-of-type(3) > div {
+    padding: 6px !important;
+    border-radius: 6px !important;
+  }
+
+  /* Stats item label span */
+  .innings-break-card > div:nth-of-type(3) > div span {
+    font-size: 9px !important;
+  }
+
+  /* Stats item value h3 */
+  .innings-break-card > div:nth-of-type(3) > div h3 {
+    margin: 2px 0 0 0 !important;
+    font-size: 11px !important;
+  }
+
+  /* Target score container */
+  .innings-break-card > div:nth-of-type(4) {
+    margin: 6px 0 !important;
+    padding: 6px 10px !important;
+    border-radius: 8px !important;
+  }
+
+  /* Target score label span */
+  .innings-break-card > div:nth-of-type(4) > span {
+    font-size: 10px !important;
+  }
+
+  /* Target score value div */
+  .innings-break-card > div:nth-of-type(4) > div {
+    font-size: 18px !important;
+    margin: 2px 0 !important;
+  }
+
+  /* Target score description p */
+  .innings-break-card > div:nth-of-type(4) > p {
+    font-size: 11px !important;
+  }
+
+  /* Proceed button */
+  .innings-break-card .proceed-btn {
+    padding: 10px !important;
+    font-size: 14px !important;
+    border-radius: 8px !important;
+    margin-top: 4px !important;
+  }
 }

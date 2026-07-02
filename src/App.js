@@ -586,12 +586,10 @@ function App() {
           console.log("Exiting fullscreen failed:", err);
         });
       }
-      if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
-        try {
-          window.screen.orientation.unlock();
-        } catch (err) {
-          console.log("Orientation unlock failed:", err);
-        }
+      if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+        window.screen.orientation.lock("portrait").catch(err => {
+          console.log("Menu portrait lock failed:", err);
+        });
       }
     }
   }, [isGameplayActive]);
