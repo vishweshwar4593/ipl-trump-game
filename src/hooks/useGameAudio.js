@@ -15,7 +15,7 @@ export function useGameAudio() {
   });
 
   const toggleMute = useCallback(() => {
-    setIsMuted(prev => {
+    setIsMuted((prev) => {
       const newVal = !prev;
       localStorage.setItem("isMuted", String(newVal));
       return newVal;
@@ -23,10 +23,17 @@ export function useGameAudio() {
   }, []);
 
   useEffect(() => {
+    // Configure volumes
     clickAudio.current.volume = 0.5;
     winAudio.current.volume = 0.7;
     loseAudio.current.volume = 0.7;
     hitAudio.current.volume = 0.6;
+
+    // Preload audio files within the React lifecycle
+    clickAudio.current.preload = "auto";
+    winAudio.current.preload = "auto";
+    loseAudio.current.preload = "auto";
+    hitAudio.current.preload = "auto";
   }, []);
 
   useEffect(() => {
@@ -62,6 +69,6 @@ export function useGameAudio() {
     playClick,
     playWin,
     playLose,
-    playHit
+    playHit,
   };
 }

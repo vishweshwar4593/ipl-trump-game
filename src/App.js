@@ -304,7 +304,8 @@ function App() {
     playerHP > 0 &&
     aiHP > 0 &&
     playerDeck && playerDeck.length > 0 &&
-    aiDeck && aiDeck.length > 0
+    aiDeck && aiDeck.length > 0 &&
+    turn !== "toss"
   );
 
   const playerRef = useRef(null);

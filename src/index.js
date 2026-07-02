@@ -14,8 +14,12 @@ root.render(
   </React.StrictMode>
 );
 
-// Register service worker for offline PWA capabilities
-serviceWorkerRegistration.register();
+// Register service worker for offline PWA capabilities, but bypass on localhost for a clean dev experience
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  serviceWorkerRegistration.unregister();
+} else {
+  serviceWorkerRegistration.register();
+}
 
 // If you want to start measuring performance in your app, pass a function
 // to log results (for example: reportWebVitals(console.log))

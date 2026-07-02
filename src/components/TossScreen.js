@@ -194,112 +194,116 @@ function TossScreen({
           </div>
         </div>
 
-        {/* Phase 1: Call Selection */}
-        {phase === "guess" && (
-          <div className="toss-card">
-            {isCaller ? (
-              <>
-                <h3 className="toss-instructions">Select Heads or Tails</h3>
-                <div className="toss-timer-badge">⏱️ {timeLeft}s remaining</div>
-                <div className="toss-buttons-row">
-                  <button className="toss-btn option-btn" onClick={() => handleGuess("heads")}>
-                    🪙 Heads
-                  </button>
-                  <button className="toss-btn option-btn" onClick={() => handleGuess("tails")}>
-                    🪙 Tails
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="toss-waiting">
-                <div className="toss-spinner-ring"></div>
-                <p>Opponent is calling the toss...</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Phase 2: Coin Flipping Animation */}
-        {phase === "spinning" && (
-          <div className="toss-card">
-            <div className="coin-wrapper">
-              <div className="coin spinning">
-                <div className="coin-face heads">🪙</div>
-                <div className="coin-face tails">🏆</div>
-              </div>
+        <div className="toss-card">
+          {/* Persistent Coin Wrapper to prevent remounting and allow smooth animations */}
+          <div className="coin-wrapper">
+            <div className={`coin ${
+              phase === "spinning" 
+                ? `spinning-${coinResult}` 
+                : phase === "result" 
+                  ? `landed-${coinResult}` 
+                  : ""
+            }`}>
+              <div className="coin-face heads">🪙</div>
+              <div className="coin-face tails">🏆</div>
             </div>
-            <p className="toss-status-text">Flipping the coin...</p>
+            <div className={`coin-shadow ${phase === "spinning" ? "animating" : ""}`}></div>
           </div>
-        )}
 
-        {/* Phase 3: Outcome and Preference Decisions */}
-        {phase === "result" && (
-          <div className="toss-card">
-            <div className="coin-wrapper">
-              <div className={`coin landed-${coinResult}`}>
-                {coinResult === "heads" ? "🪙" : "🏆"}
-              </div>
-            </div>
-            <h4 className="toss-outcome-title">It's {coinResult.toUpperCase()}!</h4>
-
-            {tossWinner === "player" ? (
-              decision ? (
-                <div className="toss-decision-announcement">
-                  <p className="success-text">🎉 You won the toss!</p>
-                  <p>You chose to <strong>{gameMode === "team" ? (decision === "bat" ? "Bat First 🏏" : "Bowl First 🍒") : (decision === "play" ? "Play First" : "Receive First")}</strong></p>
-                </div>
-              ) : (
+          {/* Phase 1: Call Selection */}
+          {phase === "guess" && (
+            <>
+              {isCaller ? (
                 <>
-                  <p className="success-text">🎉 You won the Toss! Choose your preference:</p>
+                  <h3 className="toss-instructions">Select Heads or Tails</h3>
                   <div className="toss-timer-badge">⏱️ {timeLeft}s remaining</div>
-                  {gameMode === "team" ? (
-                    <div className="toss-buttons-row">
-                      <button className="toss-btn action-btn select-play-btn" onClick={() => handleDecision("bat")}>
-                        🏏 Bat First
-                      </button>
-                      <button className="toss-btn action-btn select-receive-btn" onClick={() => handleDecision("bowl")}>
-                        🍒 Bowl First
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="toss-buttons-row">
-                      <button className="toss-btn action-btn select-play-btn" onClick={() => handleDecision("play")}>
-                        🏏 Play First
-                      </button>
-                      <button className="toss-btn action-btn select-receive-btn" onClick={() => handleDecision("receive")}>
-                        🥎 Receive First
-                      </button>
-                    </div>
-                  )}
+                  <div className="toss-buttons-row">
+                    <button className="toss-btn option-btn" onClick={() => handleGuess("heads")}>
+                      🪙 Heads
+                    </button>
+                    <button className="toss-btn option-btn" onClick={() => handleGuess("tails")}>
+                      🪙 Tails
+                    </button>
+                  </div>
                 </>
-              )
-            ) : (
-              // AI or Opponent Won
-              isOnline ? (
+              ) : (
+                <div className="toss-waiting">
+                  <div className="toss-spinner-ring"></div>
+                  <p>Opponent is calling the toss...</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Phase 2: Coin Flipping Status */}
+          {phase === "spinning" && (
+            <p className="toss-status-text">Flipping the coin...</p>
+          )}
+
+          {/* Phase 3: Outcome and Preference Decisions */}
+          {phase === "result" && (
+            <>
+              <h4 className="toss-outcome-title">It's {coinResult?.toUpperCase()}!</h4>
+
+              {tossWinner === "player" ? (
                 decision ? (
                   <div className="toss-decision-announcement">
-                    <p className="error-text">😢 Opponent won the toss!</p>
-                    <p>Opponent chose to <strong>{gameMode === "team" ? (decision === "bat" ? "Bat First" : "Bowl First") : (decision === "play" ? "Play First" : "Receive First")}</strong></p>
+                    <p className="success-text">🎉 You won the toss!</p>
+                    <p>You chose to <strong>{gameMode === "team" ? (decision === "bat" ? "Bat First 🏏" : "Bowl First 🍒") : (decision === "play" ? "Play First" : "Receive First")}</strong></p>
                   </div>
                 ) : (
-                  <div className="toss-waiting">
-                    <div className="toss-spinner-ring"></div>
-                    <p>Opponent is choosing their preference...</p>
-                  </div>
+                  <>
+                    <p className="success-text">🎉 You won the Toss! Choose your preference:</p>
+                    <div className="toss-timer-badge">⏱️ {timeLeft}s remaining</div>
+                    {gameMode === "team" ? (
+                      <div className="toss-buttons-row">
+                        <button className="toss-btn action-btn select-play-btn" onClick={() => handleDecision("bat")}>
+                          🏏 Bat First
+                        </button>
+                        <button className="toss-btn action-btn select-receive-btn" onClick={() => handleDecision("bowl")}>
+                          🍒 Bowl First
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="toss-buttons-row">
+                        <button className="toss-btn action-btn select-play-btn" onClick={() => handleDecision("play")}>
+                          🏏 Play First
+                        </button>
+                        <button className="toss-btn action-btn select-receive-btn" onClick={() => handleDecision("receive")}>
+                          🥎 Receive First
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )
               ) : (
-                // Local AI Won
-                <div className="toss-decision-announcement">
-                  <p className="error-text">😢 AI won the toss!</p>
-                  <p>AI chose to <strong>{gameMode === "team" ? (decision === "bat" ? "Bat First" : "Bowl First") : (decision === "play" ? "Play First" : "Receive First")}</strong></p>
-                  <button className="play-btn" style={{ marginTop: "20px" }} onClick={handleAiProceed}>
-                    ⚡ Start Match
-                  </button>
-                </div>
-              )
-            )}
-          </div>
-        )}
+                // AI or Opponent Won
+                isOnline ? (
+                  decision ? (
+                    <div className="toss-decision-announcement">
+                      <p className="error-text">😢 Opponent won the toss!</p>
+                      <p>Opponent chose to <strong>{gameMode === "team" ? (decision === "bat" ? "Bat First" : "Bowl First") : (decision === "play" ? "Play First" : "Receive First")}</strong></p>
+                    </div>
+                  ) : (
+                    <div className="toss-waiting">
+                      <div className="toss-spinner-ring"></div>
+                      <p>Opponent is choosing their preference...</p>
+                    </div>
+                  )
+                ) : (
+                  // Local AI Won
+                  <div className="toss-decision-announcement">
+                    <p className="error-text">😢 AI won the toss!</p>
+                    <p>AI chose to <strong>{gameMode === "team" ? (decision === "bat" ? "Bat First" : "Bowl First") : (decision === "play" ? "Play First" : "Receive First")}</strong></p>
+                    <button className="play-btn" style={{ marginTop: "20px" }} onClick={handleAiProceed}>
+                      ⚡ Start Match
+                    </button>
+                  </div>
+                )
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
