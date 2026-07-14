@@ -396,7 +396,7 @@ export function useGameEngine({
     setSuperOverBanner(false);
   // onlineRole intentionally removed — no longer used in this effect.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle, tournamentStateRef, oversLimit]);
+  }, [gameMode, playerTeam, aiTeam, players, MAX_HP, resumedGameState, playStyle, tournamentStateRef]);
 
   // (Online starting turn is now initialized and set by OnlineMode on "startGame")
 

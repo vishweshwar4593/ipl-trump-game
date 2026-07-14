@@ -237,7 +237,7 @@ function App() {
     setPlayerFranchisePool,
     setAiFranchisePool,
     superOverBanner,
-    
+
     // Cricket States & Functions
     oversLimit,
     currentInnings,
@@ -295,9 +295,9 @@ function App() {
   tournamentStateRef.current = tournamentState;
 
   const isGameplayActive = !!(
-    gameMode && 
-    (gameMode !== "time" || selectedTime) && 
-    (gameMode !== "team" || (playerTeam && aiTeam)) && 
+    gameMode &&
+    (gameMode !== "time" || selectedTime) &&
+    (gameMode !== "team" || (playerTeam && aiTeam)) &&
     (playStyle !== "online" || isOnlineGameStarted) &&
     (gameMode !== "tournament" || aiTeam) &&
     !gameOver &&
@@ -605,7 +605,7 @@ function App() {
     const handlePopState = (event) => {
       // Re-push the state to prevent navigation
       window.history.pushState({ gameplay: true }, "");
-      
+
       // Trigger the standard confirmation modal
       setShowConfirm(true);
     };
@@ -758,8 +758,8 @@ function App() {
     return (
       <>
         <LoginConflictModal isOpen={loginConflict} onClose={() => setLoginConflict(false)} />
-        <LoginScreen 
-          onContinueAsGuest={() => setIsGuest(true)} 
+        <LoginScreen
+          onContinueAsGuest={() => setIsGuest(true)}
           onAuthSuccess={(finalUser) => setUser(finalUser)}
         />
       </>
@@ -904,9 +904,9 @@ function App() {
       const winTitle = isSpectator ? `${playerTeam} WINS! 🏆` : "MATCH WON! 🎉";
       const loseTitle = isSpectator ? `${aiTeam} WINS! 🏆` : "MATCH LOST! 😢";
       return (
-        <ResultScreen 
-          title={isPlayerWin ? winTitle : loseTitle} 
-          buttonText="Continue Standings" 
+        <ResultScreen
+          title={isPlayerWin ? winTitle : loseTitle}
+          buttonText="Continue Standings"
           onBack={() => updateTournamentProgress(isPlayerWin)}
           matchStats={!isSpectator ? buildMatchStats(isPlayerWin) : undefined}
         />
@@ -919,9 +919,9 @@ function App() {
     const isPlayerWin = aiDeck.length === 0;
     if (gameMode === "tournament") {
       return (
-        <ResultScreen 
-          title={isPlayerWin ? "YOU WIN MATCH! 🎉" : "YOU LOSE MATCH! 😢"} 
-          buttonText="Continue Standings" 
+        <ResultScreen
+          title={isPlayerWin ? "YOU WIN MATCH! 🎉" : "YOU LOSE MATCH! 😢"}
+          buttonText="Continue Standings"
           onBack={() => updateTournamentProgress(isPlayerWin)}
           matchStats={buildMatchStats(isPlayerWin)}
         />
@@ -932,22 +932,22 @@ function App() {
 
   return (
     <div>
-      <ExitConfirmationModal 
-        isOpen={showConfirm} 
-        gameMode={gameMode} 
-        aiTeam={aiTeam} 
-        onConfirm={confirmGoHome} 
-        onCancel={cancelGoHome} 
+      <ExitConfirmationModal
+        isOpen={showConfirm}
+        gameMode={gameMode}
+        aiTeam={aiTeam}
+        onConfirm={confirmGoHome}
+        onCancel={cancelGoHome}
       />
 
-      <ReconnectModal 
-        isOpen={opponentDisconnected} 
-        timeLeft={disconnectTimeLeft} 
+      <ReconnectModal
+        isOpen={opponentDisconnected}
+        timeLeft={disconnectTimeLeft}
       />
 
-      <OpponentLeftModal 
-        isOpen={opponentLeft} 
-        onClose={() => { setOpponentLeft(false); confirmGoHome(); }} 
+      <OpponentLeftModal
+        isOpen={opponentLeft}
+        onClose={() => { setOpponentLeft(false); confirmGoHome(); }}
       />
 
       <div
@@ -1053,7 +1053,7 @@ function App() {
               aiTeam={aiTeam}
               playerFranchisePool={playerFranchisePool}
               superOverBanner={superOverBanner}
-              
+
               battingTeam={battingTeam}
               currentInnings={currentInnings}
               targetScore={targetScore}
@@ -1069,9 +1069,9 @@ function App() {
           <div className="loading">Checking winner...</div>
         )}
 
-        <EmotePanel 
-          playStyle={playStyle} 
-          roomId={localStorage.getItem("roomId")} 
+        <EmotePanel
+          playStyle={playStyle}
+          roomId={localStorage.getItem("roomId")}
         />
       </div>
 
